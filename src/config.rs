@@ -5,6 +5,7 @@ const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 const HOOKS_FILE: &str = ".pre-commit-hooks.yaml";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Language {
     Conda,
     Coursier,
@@ -29,6 +30,7 @@ pub enum Language {
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 pub enum HookType {
     CommitMsg,
     PostCheckout,
@@ -44,6 +46,7 @@ pub enum HookType {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
 pub enum Stage {
     Manual,
     CommitMsg,
@@ -59,6 +62,7 @@ pub enum Stage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct ConfigWire {
     pub repos: Vec<RepoWire>,
     pub default_install_hook_types: Option<Vec<HookType>>,
@@ -127,6 +131,7 @@ impl<'de> Deserialize<'de> for Repo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct RepoWire {
     pub repo: Repo,
     pub rev: String,
@@ -134,6 +139,7 @@ pub struct RepoWire {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct HookWire {
     pub id: String,
     pub alias: Option<String>,
@@ -153,6 +159,7 @@ pub struct HookWire {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct HooksWire {
     pub id: String,
     pub name: String,

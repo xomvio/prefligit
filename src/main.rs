@@ -131,12 +131,20 @@ struct AutoUpdateArgs {
     pub jobs: usize,
 }
 
+const EXPECTED: ExitCode = ExitCode::from(1);
+const UNEXPECTED: ExitCode = ExitCode::from(3);
+const INTERRUPTED: ExitCode = ExitCode::from(130);
+
 fn main() -> ExitCode {
+    ctrlc::set_handler(move || {
+        std::process::exit(130);
+    }).expect("Error setting Ctrl-C handler");
+
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
             eprintln!("{}", err);
-            return ExitCode::FAILURE;
+            return EXPECTED;
         }
     };
 
