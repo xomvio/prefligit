@@ -79,7 +79,8 @@ pub struct ConfigWire {
     pub minimum_pre_commit_version: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Repo {
     Local,
     Meta,
@@ -92,35 +93,6 @@ impl std::fmt::Display for Repo {
             Repo::Local => write!(f, "local"),
             Repo::Meta => write!(f, "meta"),
             Repo::Remote(url) => write!(f, "{}", url),
-        }
-    }
-}
-
-impl Serialize for Repo {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        match self {
-            Repo::Local => serializer.serialize_str("local"),
-            Repo::Meta => serializer.serialize_str("meta"),
-            Repo::Remote(url) => serializer.serialize_str(&url.to_string()),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Repo {
-    fn deserialize<D>(deserializer: D) -> Result<Repo, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "local" => Ok(Repo::Local),
-            "meta" => Ok(Repo::Meta),
-            _ => Ok(Repo::Remote(
-                url::Url::parse(&s).map_err(serde::de::Error::custom)?,
-            )),
         }
     }
 }
