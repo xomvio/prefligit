@@ -1,6 +1,6 @@
+use crate::config::Stage;
 use clap::{arg, ArgAction, Args, ColorChoice, Parser, Subcommand, ValueEnum};
 use std::{path::PathBuf, process::ExitCode};
-use crate::config::Stage;
 
 mod config;
 
@@ -131,20 +131,22 @@ struct AutoUpdateArgs {
     pub jobs: usize,
 }
 
-const EXPECTED: ExitCode = ExitCode::from(1);
-const UNEXPECTED: ExitCode = ExitCode::from(3);
-const INTERRUPTED: ExitCode = ExitCode::from(130);
+const EXPECTED: u8 = 1;
+const UNEXPECTED: i32 = 3;
+#[allow(dead_code)]
+const INTERRUPTED: i32 = 130;
 
 fn main() -> ExitCode {
     ctrlc::set_handler(move || {
-        std::process::exit(130);
-    }).expect("Error setting Ctrl-C handler");
+        std::process::exit(UNEXPECTED);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
             eprintln!("{}", err);
-            return EXPECTED;
+            return EXPECTED.into();
         }
     };
 
