@@ -107,11 +107,11 @@ struct RunArgs {
     pub hook_id: Vec<String>,
     #[arg(short, long)]
     pub all_files: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "all_files")]
     pub files: Vec<PathBuf>,
-    #[arg(long)]
+    #[arg(long, requires = "to_ref")]
     pub from_ref: Option<String>,
-    #[arg(long)]
+    #[arg(long, requires = "from_ref")]
     pub to_ref: Option<String>,
     #[arg(long)]
     pub hook_stage: Option<Stage>,
@@ -127,8 +127,8 @@ struct AutoUpdateArgs {
     pub freeze: bool,
     #[arg(long)]
     pub repo: Option<String>,
-    #[arg(short, long, default_value = "1")]
-    pub jobs: Option<usize>,
+    #[arg(short, long, default_value_t = 1)]
+    pub jobs: usize,
 }
 
 fn main() -> ExitCode {
