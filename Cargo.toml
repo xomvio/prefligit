@@ -11,6 +11,9 @@ publish = false
 [dependencies]
 anyhow = "1.0.86"
 clap = { version = "4.5.16", features = ["derive"] }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_yaml = "0.9.34"
+url = "2.5.2"
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

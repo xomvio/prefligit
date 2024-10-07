@@ -1,5 +1,8 @@
-use std::{path::PathBuf, process::ExitCode};
 use clap::{arg, ArgAction, Args, ColorChoice, Parser, Subcommand, ValueEnum};
+use std::{path::PathBuf, process::ExitCode};
+use crate::config::Stage;
+
+mod config;
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -26,7 +29,7 @@ enum CompatCommand {
     /// Install the git pre-commit hooks.
     Install(InstallArgs),
     /// Install hook environments for all hooks used in the config file.
-    InstallHooks(InstallHooksArgs),
+    InstallHooks,
     /// Run hooks.
     Run(RunArgs),
     /// Uninstall the pre-commit script.
@@ -39,7 +42,7 @@ enum CompatCommand {
     SampleConfig,
     /// Auto-update pre-commit config to the latest repos' versions.
     #[command(name = "autoupdate")]
-    AutoUpdate,
+    AutoUpdate(AutoUpdateArgs),
     /// Clean unused cached repos.
     GC,
     /// Clean out pre-commit files.
@@ -100,12 +103,32 @@ enum HookType {
 
 #[derive(Args, Debug)]
 struct RunArgs {
-    // Add fields for run options here
+    #[arg(required = true)]
+    pub hook_id: Vec<String>,
+    #[arg(short, long)]
+    pub all_files: bool,
+    #[arg(long)]
+    pub files: Vec<PathBuf>,
+    #[arg(long)]
+    pub from_ref: Option<String>,
+    #[arg(long)]
+    pub to_ref: Option<String>,
+    #[arg(long)]
+    pub hook_stage: Option<Stage>,
+    #[arg(long)]
+    pub show_diff_on_failure: bool,
 }
 
 #[derive(Args, Debug)]
-struct InstallHooksArgs {
-
+struct AutoUpdateArgs {
+    #[arg(long, default_value_t = true)]
+    pub bleeding_edge: bool,
+    #[arg(long)]
+    pub freeze: bool,
+    #[arg(long)]
+    pub repo: Option<String>,
+    #[arg(short, long, default_value = "1")]
+    pub jobs: Option<usize>,
 }
 
 fn main() -> ExitCode {
@@ -118,23 +141,21 @@ fn main() -> ExitCode {
     };
 
     match cli.command {
-        Commands::Compat(command) => {
-            match command.command {
-                CompatCommand::Install(options) => {
-                    println!("Installing with options: {:?}", options);
-                }
-                CompatCommand::InstallHooks(options) => {
-                    println!("Installing hooks with options: {:?}", options);
-                }
-                CompatCommand::Run(options) => {
-                    println!("Running with options: {:?}", options);
-                }
-                _ => {
-                    eprintln!("Command not implemented yet");
-                    return ExitCode::FAILURE;
-                }
+        Commands::Compat(command) => match command.command {
+            CompatCommand::Install(options) => {
+                println!("Installing with options: {:?}", options);
             }
-        }
+            CompatCommand::InstallHooks => {
+                println!("Installing hooks");
+            }
+            CompatCommand::Run(options) => {
+                println!("Running with options: {:?}", options);
+            }
+            _ => {
+                eprintln!("Command not implemented yet");
+                return ExitCode::FAILURE;
+            }
+        },
     };
 
     ExitCode::SUCCESS
