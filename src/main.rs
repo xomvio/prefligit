@@ -4,6 +4,7 @@ use std::{path::PathBuf, process::ExitCode};
 
 mod config;
 mod store;
+mod fs;
 
 #[derive(Parser, Debug)]
 struct Cli {
