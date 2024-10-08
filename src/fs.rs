@@ -13,7 +13,7 @@ impl LockedFile {
     fn lock_file_blocking(file: fs_err::File, resource: &str) -> Result<Self, std::io::Error> {
         trace!(
             "Checking lock for `{resource}` at `{}`",
-            file.path().user_display()
+            file.path().display().to_string(),
         );
         match file.file().try_lock_exclusive() {
             Ok(()) => {
@@ -27,7 +27,7 @@ impl LockedFile {
                 trace!("Try lock error: {err:?}");
                 info!(
                     "Waiting to acquire lock for `{resource}` at `{}`",
-                    file.path().user_display(),
+                    file.path().display().to_string(),
                 );
                 file.file().lock_exclusive().map_err(|err| {
                     // Not an fs_err method, we need to build our own path context
@@ -35,7 +35,7 @@ impl LockedFile {
                         std::io::ErrorKind::Other,
                         format!(
                             "Could not acquire lock for `{resource}` at `{}`: {}",
-                            file.path().user_display(),
+                            file.path().display().to_string(),
                             err
                         ),
                     )

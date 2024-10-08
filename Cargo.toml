@@ -15,7 +15,7 @@ ctrlc = "3.4.5"
 fs-err = "2.11.0"
 fs2 = "0.4.3"
 indoc = "2.0.5"
-rusqlite = "0.32.1"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_yaml = "0.9.34"
 tempfile = "3.13.0"
@@ -25,7 +25,6 @@ url = { version = "2.5.2", features = ["serde"] }
 
 [dev-dependencies]
 insta = "1.40.0"
-
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
