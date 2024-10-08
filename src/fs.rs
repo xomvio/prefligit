@@ -1,9 +1,13 @@
 use std::fmt::Display;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use fs2::FileExt;
 use tempfile::NamedTempFile;
 use tracing::{debug, error, info, trace};
+
+pub static CWD: LazyLock<PathBuf> =
+    LazyLock::new(|| std::env::current_dir().expect("The current directory must be exist"));
 
 /// A file lock that is automatically released when dropped.
 #[derive(Debug)]

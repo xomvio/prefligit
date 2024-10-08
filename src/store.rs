@@ -1,5 +1,6 @@
-use rusqlite::Connection;
 use std::path::Path;
+
+use rusqlite::Connection;
 
 pub struct Store {
     conn: Connection,
