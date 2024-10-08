@@ -1,5 +1,5 @@
-use std::path::Path;
 use rusqlite::Connection;
+use std::path::Path;
 
 pub struct Store {
     conn: Connection,
@@ -20,13 +20,15 @@ impl Store {
 
     pub fn repos(&self) -> rusqlite::Result<Vec<Repo>> {
         let mut stmt = self.conn.prepare("SELECT repo, ref, path FROM repos")?;
-         let repos = stmt.query_map([], |row|
-            Ok(Repo {
-                name: row.get(0)?,
-                r#ref: row.get(1)?,
-                path: row.get(2)?,
-            })
-        )?.collect::<Result<Vec<_>, _>>();
+        let repos = stmt
+            .query_map([], |row| {
+                Ok(Repo {
+                    name: row.get(0)?,
+                    r#ref: row.get(1)?,
+                    path: row.get(2)?,
+                })
+            })?
+            .collect();
         repos
     }
 }

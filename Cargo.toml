@@ -26,6 +26,9 @@ url = { version = "2.5.2", features = ["serde"] }
 [dev-dependencies]
 insta = "1.40.0"
 
+[lints.rust]
+dead_code = "allow"
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"

@@ -3,8 +3,8 @@ use clap::{arg, ArgAction, Args, ColorChoice, Parser, Subcommand, ValueEnum};
 use std::{path::PathBuf, process::ExitCode};
 
 mod config;
-mod store;
 mod fs;
+mod store;
 
 #[derive(Parser, Debug)]
 struct Cli {
