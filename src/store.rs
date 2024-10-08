@@ -1,10 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use anyhow::Result;
 use rusqlite::Connection;
 
-pub struct Store {
-    conn: Connection,
-}
+use crate::fs::LockedFile;
 
 #[derive(Debug)]
 pub struct Repo {
@@ -13,10 +12,18 @@ pub struct Repo {
     pub path: String,
 }
 
+pub struct Store {
+    path: PathBuf,
+    conn: Connection,
+}
+
 impl Store {
     pub fn from_path(path: &Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
-        Ok(Self { conn })
+        Ok(Self {
+            path: path.to_path_buf(),
+            conn,
+        })
     }
 
     pub fn repos(&self) -> rusqlite::Result<Vec<Repo>> {
@@ -31,6 +38,10 @@ impl Store {
             })?
             .collect();
         repos
+    }
+
+    pub fn lock(&self) -> Result<LockedFile, std::io::Error> {
+        LockedFile::acquire_blocking(self.path.join(".lock"), "store")
     }
 }
 

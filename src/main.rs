@@ -10,6 +10,7 @@ mod cli;
 mod config;
 mod fs;
 mod git;
+mod hook;
 mod store;
 
 fn main() -> ExitCode {
