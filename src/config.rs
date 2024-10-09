@@ -5,9 +5,9 @@ use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[allow(dead_code)]
-const CONFIG_FILE: &str = ".pre-commit-config.yaml";
+pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 #[allow(dead_code)]
-const HOOKS_FILE: &str = ".pre-commit-hooks.yaml";
+pub const HOOKS_FILE: &str = ".pre-commit-hooks.yaml";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

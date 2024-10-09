@@ -1,6 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
+use etcetera::BaseStrategy;
 use rusqlite::Connection;
 
 use crate::fs::LockedFile;
@@ -18,12 +19,19 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn from_path(path: &Path) -> rusqlite::Result<Self> {
-        let conn = Connection::open(path)?;
-        Ok(Self {
-            path: path.to_path_buf(),
-            conn,
-        })
+    pub fn from_settings(path: Option<PathBuf>) -> Result<Self> {
+        if let Some(path) = path {
+            Self::from_path(path)
+        } else if let Ok(cache_dir) = etcetera::choose_base_strategy() {
+            Self::from_path(cache_dir.cache_dir().join("pre-commit").join("db.db"))
+        } else {
+            Err(anyhow::anyhow!("Could not determine cache directory"))
+        }
+    }
+
+    pub fn from_path(path: PathBuf) -> Result<Self> {
+        let conn = Connection::open(&path)?;
+        Ok(Self { path, conn })
     }
 
     pub fn repos(&self) -> rusqlite::Result<Vec<Repo>> {
@@ -52,8 +60,7 @@ mod tests {
 
     #[test]
     fn test_store() -> Result<()> {
-        let db_path = Path::new("/Users/Jo/.cache/pre-commit/db.db");
-        let store = Store::from_path(&db_path)?;
+        let store = Store::from_settings(None)?;
         let repos = store.repos()?;
         println!("{:#?}", repos);
 

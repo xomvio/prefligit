@@ -6,6 +6,7 @@ use clap::{ArgAction, Args, ColorChoice, Parser, Subcommand, ValueEnum};
 
 use crate::config::Stage;
 
+mod install;
 mod run;
 
 pub(crate) use run::run;
@@ -43,20 +44,8 @@ impl From<ExitStatus> for ExitCode {
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub(crate) command: Commands,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum Commands {
-    Compat(CompatNamespace),
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct CompatNamespace {
     #[command(flatten)]
     pub(crate) global_args: CompatGlobalArgs,
-
-    #[command(subcommand)]
-    pub(crate) command: CompatCommand,
 }
 
 #[derive(Debug, Parser)]
@@ -86,10 +75,21 @@ pub(crate) struct CompatGlobalArgs {
 }
 
 #[derive(Debug, Subcommand)]
+pub(crate) enum Commands {
+    Compat(CompatNamespace),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CompatNamespace {
+    #[command(subcommand)]
+    pub(crate) command: CompatCommand,
+}
+
+#[derive(Debug, Subcommand)]
 pub(crate) enum CompatCommand {
-    /// Install the git pre-commit hooks.
+    /// Install the git pre-commit hook.
     Install(InstallArgs),
-    /// Install hook environments for all hooks used in the config file.
+    /// Create hook environments for all hooks used in the config file.
     InstallHooks,
     /// Run hooks.
     Run(RunArgs),
@@ -125,19 +125,19 @@ pub(crate) struct InstallArgs {
     #[arg(short = 'f', long)]
     pub(crate) overwrite: bool,
 
-    /// Install hook environments.
+    /// Create hook environments for all hooks used in the config file.
     #[arg(long)]
     pub(crate) install_hooks: bool,
 
     #[arg(short = 't', long, value_enum)]
     pub(crate) hook_type: Vec<HookType>,
 
-    /// Whether to allow a missing `pre-commit` configuration file or exit with a failure code.
+    /// Allow a missing `pre-commit` configuration file.
     #[arg(long)]
     pub(crate) allow_missing_config: bool,
 }
 
-#[derive(Debug, ValueEnum, Clone, Copy)]
+#[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum HookType {
     CommitMsg,
     PostCheckout,
