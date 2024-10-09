@@ -4,10 +4,8 @@ use std::path::Path;
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 
-#[allow(dead_code)]
 pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
-#[allow(dead_code)]
-pub const HOOKS_FILE: &str = ".pre-commit-hooks.yaml";
+pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -50,7 +48,7 @@ pub enum HookType {
     PrepareCommitMsg,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Stage {
     Manual,
@@ -146,7 +144,7 @@ pub struct HookWire {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct HooksWire {
+pub struct ManifestHook {
     pub id: String,
     pub name: String,
     pub entry: String,
@@ -168,11 +166,10 @@ pub struct HooksWire {
     pub stages: Option<Vec<Stage>>,
 }
 
-pub fn read_config(path: &Path) -> Result<ConfigWire, Error> {
-    let content = fs_err::read_to_string(path)?;
-    let config =
-        serde_yaml::from_str(&content).map_err(|e| Error::Yaml(path.display().to_string(), e))?;
-    Ok(config)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ManifestWire {
+    pub hooks: Vec<ManifestHook>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -182,6 +179,20 @@ pub enum Error {
 
     #[error("Failed to parse: `{0}`")]
     Yaml(String, #[source] serde_yaml::Error),
+}
+
+pub fn read_config(path: &Path) -> Result<ConfigWire, Error> {
+    let content = fs_err::read_to_string(path)?;
+    let config =
+        serde_yaml::from_str(&content).map_err(|e| Error::Yaml(path.display().to_string(), e))?;
+    Ok(config)
+}
+
+pub fn read_manifest(path: &Path) -> Result<ManifestWire, Error> {
+    let content = fs_err::read_to_string(path)?;
+    let manifest =
+        serde_yaml::from_str(&content).map_err(|e| Error::Yaml(path.display().to_string(), e))?;
+    Ok(manifest)
 }
 
 #[cfg(test)]

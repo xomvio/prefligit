@@ -164,7 +164,10 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<FileTag>> {
         tags.insert(FileTag::NonExecutable);
     }
 
-    if let Ok(from_filename) = tags_from_file_name(path.file_name().) {
+    // TODO: fix
+    if let Ok(from_filename) =
+        tags_from_file_name(path.file_name().unwrap().to_string_lossy().to_string())
+    {
         tags.extend(from_filename);
     } else {
         if executable {
@@ -185,16 +188,13 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<FileTag>> {
     Ok(tags.into_iter().collect())
 }
 
-fn tags_from_file_name(filename: String) -> Result<Vec<FileTag>> {
-
-}
+fn tags_from_file_name(filename: String) -> Result<Vec<FileTag>> {}
 
 fn tags_from_interpreter(interpreter: &[String]) -> Vec<FileTag> {
     let mut tags = Vec::new();
     if interpreter.is_empty() {
         return tags;
     }
-
 }
 
 #[derive(thiserror::Error, Debug)]
