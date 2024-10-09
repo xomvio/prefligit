@@ -8,7 +8,7 @@ static GIT: LazyLock<PathBuf> =
     LazyLock::new(|| which::which("git").expect("`git` not found in PATH"));
 
 static GIT_ENV: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
-    let keep =  &[
+    let keep = &[
         "GIT_EXEC_PATH",
         "GIT_SSH",
         "GIT_SSH_COMMAND",

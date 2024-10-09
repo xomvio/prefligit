@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -38,18 +39,18 @@ impl From<ExitStatus> for ExitCode {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Debug, Parser)]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub(crate) command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug, Subcommand)]
 pub(crate) enum Commands {
     Compat(CompatNamespace),
 }
 
-#[derive(Args, Debug)]
+#[derive(Debug, Args)]
 pub(crate) struct CompatNamespace {
     #[command(flatten)]
     pub(crate) global_args: CompatGlobalArgs,
@@ -58,7 +59,33 @@ pub(crate) struct CompatNamespace {
     pub(crate) command: CompatCommand,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug, Parser)]
+#[command(next_help_heading = "Global options", next_display_order = 1000)]
+#[command(disable_help_flag = true)]
+pub(crate) struct CompatGlobalArgs {
+    /// Path to alternate config file.
+    #[arg(global = true, short, long, value_parser)]
+    pub(crate) config: Option<PathBuf>,
+
+    /// Whether to use color in output.
+    #[arg(
+        global = true,
+        long,
+        value_enum,
+        default_value_t = ColorChoice::Auto
+    )]
+    pub(crate) color: ColorChoice,
+
+    /// Display the concise help for this command.
+    #[arg(global = true, short, long, action = clap::ArgAction::HelpShort)]
+    help: Option<bool>,
+
+    /// Use verbose output.
+    #[arg(global = true, short, long, action = ArgAction::Count)]
+    pub(crate) verbose: u8,
+}
+
+#[derive(Debug, Subcommand)]
 pub(crate) enum CompatCommand {
     /// Install the git pre-commit hooks.
     Install(InstallArgs),
@@ -86,24 +113,13 @@ pub(crate) enum CompatCommand {
     InitTemplateDir,
     /// Try the pre-commit hooks in the current repo.
     TryRepo,
+
+    /// The implementation of the `pre-commit` hook.
+    #[command(hide = true)]
+    HookImpl(HookImplArgs),
 }
 
-#[derive(Parser, Debug)]
-pub(crate) struct CompatGlobalArgs {
-    /// Whether to use color in output.
-    #[arg(global = true, long, value_enum, default_value_t = ColorChoice::Auto)]
-    pub(crate) color: ColorChoice,
-
-    /// Path to alternate config file.
-    #[arg(global = true, short, long, value_parser)]
-    pub(crate) config: Option<PathBuf>,
-
-    /// Use verbose output.
-    #[arg(global = true, short, long, action = ArgAction::Count)]
-    pub(crate) verbose: u8,
-}
-
-#[derive(Args, Debug)]
+#[derive(Debug, Args)]
 pub(crate) struct InstallArgs {
     /// Overwrite existing hooks.
     #[arg(short = 'f', long)]
@@ -121,7 +137,7 @@ pub(crate) struct InstallArgs {
     pub(crate) allow_missing_config: bool,
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
+#[derive(Debug, ValueEnum, Clone, Copy)]
 pub(crate) enum HookType {
     CommitMsg,
     PostCheckout,
@@ -135,7 +151,7 @@ pub(crate) enum HookType {
     PrepareCommitMsg,
 }
 
-#[derive(Args, Debug)]
+#[derive(Debug, Args)]
 pub(crate) struct RunArgs {
     /// The hook ID to run.
     #[arg(value_name = "HOOK")]
@@ -154,7 +170,7 @@ pub(crate) struct RunArgs {
     pub(crate) show_diff_on_failure: bool,
 }
 
-#[derive(Args, Debug)]
+#[derive(Debug, Args)]
 pub(crate) struct AutoUpdateArgs {
     #[arg(long, default_value_t = true)]
     pub(crate) bleeding_edge: bool,
@@ -164,4 +180,16 @@ pub(crate) struct AutoUpdateArgs {
     pub(crate) repo: Option<String>,
     #[arg(short, long, default_value_t = 1)]
     pub(crate) jobs: usize,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct HookImplArgs {
+    #[arg(long)]
+    pub(crate) hook_type: Option<HookType>,
+    #[arg(long)]
+    pub(crate) hook_dir: Option<PathBuf>,
+    #[arg(long)]
+    pub(crate) skip_on_missing_config: bool,
+    #[arg(last = true)]
+    pub(crate) args: Vec<OsString>,
 }
