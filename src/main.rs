@@ -11,6 +11,7 @@ mod config;
 mod fs;
 mod git;
 mod hook;
+mod identify;
 mod store;
 
 fn main() -> ExitCode {
