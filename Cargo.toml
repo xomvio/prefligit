@@ -17,6 +17,7 @@ etcetera = "0.8.0"
 fs-err = "2.11.0"
 fs2 = "0.4.3"
 indoc = "2.0.5"
+itertools = "0.13.0"
 owo-colors = "4.1.0"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.210", features = ["derive"] }
@@ -26,10 +27,14 @@ tempfile = "3.13.0"
 thiserror = "1.0.64"
 tracing = "0.1.40"
 url = { version = "2.5.2", features = ["serde"] }
+use = "0.0.1-pre.0"
 which = "6.0.3"
 
 [dev-dependencies]
-insta = "1.40.0"
+assert_cmd = "2.0.16"
+assert_fs = "1.1.2"
+insta = { version = "1.40.0", features = ["filters"] }
+insta-cmd = "0.6.0"
 
 [lints.rust]
 dead_code = "allow"

@@ -11,7 +11,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 #[derive(Debug, PartialEq, Eq, Hash, Serialize)]
-#[serde(C = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum FileTag {
     Directory,
     Symlink,
@@ -30,80 +30,80 @@ pub enum FileTag {
     Other(Cow<'static, &'static str>),
 }
 
-static BY_EXTENSION: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
-    "c" => &["c", "h"],
-    "cpp" => &["cpp", "cxx", "cc", "hpp", "hxx", "hh"],
-    "java" => &["java"],
-    "js" => &["js"],
-    "rs" => &["rs"],
-    "ts" => &["ts"],
-    "sh" => &["sh"],
-    "bash" => &["bash"],
-    "zsh" => &["zsh"],
-    "fish" => &["fish"],
-    "python" => &["py"],
-    "ruby" => &["rb"],
-    "perl" => &["pl", "pm"],
-    "php" => &["php"],
-    "html" => &["html", "htm"],
-    "css" => &["css"],
-    "xml" => &["xml"],
-    "json" => &["json"],
-    "yaml" => &["yaml", "yml"],
-    "toml" => &["toml"],
-    "ini" => &["ini"],
-    "md" => &["md"],
-    "tex" => &["tex"],
-    "latex" => &["latex"],
-    "sql" => &["sql"],
-    "asm" => &["asm", "s"],
-    "csharp" => &["cs"],
-    "go" => &["go"],
-    "haskell" => &["hs"],
-    "lisp" => &["lisp"],
-    "lua" => &["lua"],
-    "ocaml" => &["ml"],
-    "r" => &["r"],
-    "scala" => &["scala"],
-    "swift" => &["swift"],
-    "vb" => &["vb"],
-    "vbscript" => &["vbs"],
-    "verilog" => &["v"],
-    "vhdl" => &["vhd", "vhdl"],
-    "make" => &["makefile", "Makefile", "make"],
-    "cmake" => &["CMakeLists.txt", "cmake"],
-    "dockerfile" => &["Dockerfile"],
-    "plaintext" => &["txt"],
-    "unknown" => &[""],
-};
-
-static BY_FILENAME: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
-    "Makefile" => &["make"],
-    "Dockerfile" => &["dockerfile"],
-    "CMakeLists.txt" => &["cmake"],
-};
-
-static BY_INTERPRETER: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
-    "bash" => &["sh"],
-    "python" => &["py"],
-    "ruby" => &["rb"],
-    "perl" => &["pl", "pm"],
-    "php" => &["php"],
-    "node" => &["js"],
-    "nodejs" => &["js"],
-    "lua" => &["lua"],
-    "sh" => &["sh"],
-    "zsh" => &["zsh"],
-    "fish" => &["fish"],
-    "python2" => &["py"],
-    "python3" => &["py"],
-    "ruby2" => &["rb"],
-    "ruby3" => &["rb"],
-    "perl5" => &["pl", "pm"],
-    "perl6" => &["pl", "pm"],
-    "php5" => &["php"],
-    "php7" => &["php"],
-};
+// static BY_EXTENSION: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
+//     "c" => &["c", "h"],
+//     "cpp" => &["cpp", "cxx", "cc", "hpp", "hxx", "hh"],
+//     "java" => &["java"],
+//     "js" => &["js"],
+//     "rs" => &["rs"],
+//     "ts" => &["ts"],
+//     "sh" => &["sh"],
+//     "bash" => &["bash"],
+//     "zsh" => &["zsh"],
+//     "fish" => &["fish"],
+//     "python" => &["py"],
+//     "ruby" => &["rb"],
+//     "perl" => &["pl", "pm"],
+//     "php" => &["php"],
+//     "html" => &["html", "htm"],
+//     "css" => &["css"],
+//     "xml" => &["xml"],
+//     "json" => &["json"],
+//     "yaml" => &["yaml", "yml"],
+//     "toml" => &["toml"],
+//     "ini" => &["ini"],
+//     "md" => &["md"],
+//     "tex" => &["tex"],
+//     "latex" => &["latex"],
+//     "sql" => &["sql"],
+//     "asm" => &["asm", "s"],
+//     "csharp" => &["cs"],
+//     "go" => &["go"],
+//     "haskell" => &["hs"],
+//     "lisp" => &["lisp"],
+//     "lua" => &["lua"],
+//     "ocaml" => &["ml"],
+//     "r" => &["r"],
+//     "scala" => &["scala"],
+//     "swift" => &["swift"],
+//     "vb" => &["vb"],
+//     "vbscript" => &["vbs"],
+//     "verilog" => &["v"],
+//     "vhdl" => &["vhd", "vhdl"],
+//     "make" => &["makefile", "Makefile", "make"],
+//     "cmake" => &["CMakeLists.txt", "cmake"],
+//     "dockerfile" => &["Dockerfile"],
+//     "plaintext" => &["txt"],
+//     "unknown" => &[""],
+// };
+//
+// static BY_FILENAME: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
+//     "Makefile" => &["make"],
+//     "Dockerfile" => &["dockerfile"],
+//     "CMakeLists.txt" => &["cmake"],
+// };
+//
+// static BY_INTERPRETER: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
+//     "bash" => &["sh"],
+//     "python" => &["py"],
+//     "ruby" => &["rb"],
+//     "perl" => &["pl", "pm"],
+//     "php" => &["php"],
+//     "node" => &["js"],
+//     "nodejs" => &["js"],
+//     "lua" => &["lua"],
+//     "sh" => &["sh"],
+//     "zsh" => &["zsh"],
+//     "fish" => &["fish"],
+//     "python2" => &["py"],
+//     "python3" => &["py"],
+//     "ruby2" => &["rb"],
+//     "ruby3" => &["rb"],
+//     "perl5" => &["pl", "pm"],
+//     "perl6" => &["pl", "pm"],
+//     "php5" => &["php"],
+//     "php7" => &["php"],
+// };
 
 impl FileTag {
     pub fn is_type_tag(&self) -> bool {
@@ -165,9 +165,7 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<FileTag>> {
     }
 
     // TODO: fix
-    if let Ok(from_filename) =
-        tags_from_file_name(path.file_name().unwrap().to_string_lossy().to_string())
-    {
+    if let Ok(from_filename) = tags_from_file_name(String::new()) {
         tags.extend(from_filename);
     } else {
         if executable {
@@ -188,13 +186,12 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<FileTag>> {
     Ok(tags.into_iter().collect())
 }
 
-fn tags_from_file_name(filename: String) -> Result<Vec<FileTag>> {}
+fn tags_from_file_name(_filename: String) -> Result<Vec<FileTag>> {
+    Ok(Vec::new())
+}
 
-fn tags_from_interpreter(interpreter: &[String]) -> Vec<FileTag> {
-    let mut tags = Vec::new();
-    if interpreter.is_empty() {
-        return tags;
-    }
+fn tags_from_interpreter(_interpreter: &[String]) -> Vec<FileTag> {
+    Vec::new()
 }
 
 #[derive(thiserror::Error, Debug)]

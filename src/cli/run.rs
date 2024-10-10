@@ -1,5 +1,6 @@
-use anyhow::Result;
 use std::path::PathBuf;
+
+use anyhow::Result;
 
 use crate::cli::ExitStatus;
 use crate::config::{read_config, ConfigWire, RepoWire, Stage, CONFIG_FILE};
@@ -35,17 +36,26 @@ pub(crate) fn run(
     let _store = Store::from_settings(None)?;
     let repo = Repository::current(config)?;
 
-    let hooks = repo
+    let hooks: Vec<_> = repo
         .repos()
         .iter()
         .flat_map(|repo| repo.hooks.iter())
-        .filter(|&h| hook.map_or(true, |hook| h.id == hook || h.alias == Some(hook)))
         .filter(|&h| {
-            hook_stage.map_or(true, |hook_stage| {
-                let Some(ref stages) = h.stages else { false };
-                stages.contains(&hook_stage)
-            })
-        });
+            if let Some(ref hook) = hook {
+                &h.id == hook || h.alias.as_ref() == Some(hook)
+            } else {
+                false
+            }
+        })
+        .filter(|&h| match (hook_stage, h.stages.as_ref()) {
+            (Some(ref stage), Some(stages)) => stages.contains(stage),
+            (_, _) => true,
+        })
+        .collect();
+
+    for hook in hooks {
+        println!("Running hook: {}", hook.id);
+    }
 
     Ok(ExitStatus::Success)
 }

@@ -55,8 +55,9 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use anyhow::Result;
+
+    use super::*;
 
     #[test]
     fn test_store() -> Result<()> {

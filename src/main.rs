@@ -41,8 +41,7 @@ fn main() -> ExitCode {
                 Ok(ExitStatus::Success)
             }
             CompatCommand::Run(options) => {
-                println!("Running with options: {:?}", options);
-                cli::run(cli.global_args.config)
+                cli::run(cli.global_args.config, options.hook_id, options.hook_stage)
             }
             _ => {
                 eprintln!("Command not implemented yet");
