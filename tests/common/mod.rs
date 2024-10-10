@@ -8,7 +8,7 @@ use assert_fs::fixture::{ChildPath, PathChild};
 use etcetera::BaseStrategy;
 
 pub struct TestContext {
-    pub temp_dir: ChildPath,
+    temp_dir: ChildPath,
 
     /// Standard filters for this test context.
     filters: Vec<(String, String)>,
@@ -60,7 +60,7 @@ impl TestContext {
     pub fn command(&self) -> Command {
         let bin = assert_cmd::cargo::cargo_bin("pre-commit-rs");
         let mut cmd = Command::new(bin);
-        cmd.current_dir(&self.temp_dir);
+        cmd.current_dir(self.workdir());
         cmd
     }
 
@@ -79,6 +79,10 @@ impl TestContext {
             .map(|(p, r)| (p.as_str(), r.as_str()))
             .chain(INSTA_FILTERS.iter().copied())
             .collect()
+    }
+
+    pub fn workdir(&self) -> &ChildPath {
+        &self.temp_dir
     }
 }
 

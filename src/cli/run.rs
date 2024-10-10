@@ -44,7 +44,7 @@ pub(crate) fn run(
             if let Some(ref hook) = hook {
                 &h.id == hook || h.alias.as_ref() == Some(hook)
             } else {
-                false
+                true
             }
         })
         .filter(|&h| match (hook_stage, h.stages.as_ref()) {

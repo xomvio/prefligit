@@ -8,17 +8,35 @@ mod common;
 #[test]
 fn run() -> Result<()> {
     let context = TestContext::new();
-    context
-        .temp_dir
-        .child(".pre-commit-config.yaml")
-        .write_str("repos: []")?;
+
+    fs_err::copy(
+        "tests/data/uv-pre-commit-config.yaml",
+        context.workdir().child(".pre-commit-config.yaml"),
+    )?;
 
     cmd_snapshot!(context.filters(), context.run(), @r#"
     success: true
     exit_code: 0
     ----- stdout -----
+    Running hook: validate-pyproject
+    Running hook: typos
+    Running hook: cargo-fmt
+    Running hook: cargo-dev-generate-all
+    Running hook: prettier
+    Running hook: ruff-format
+    Running hook: ruff
 
     ----- stderr -----
     "#);
+
+    cmd_snapshot!(context.filters(), context.run().arg("typos"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Running hook: typos
+
+    ----- stderr -----
+    "#);
+
     Ok(())
 }

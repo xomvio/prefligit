@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::str::FromStr;
 
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -77,12 +78,34 @@ pub struct ConfigWire {
     pub minimum_pre_commit_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Repo {
     Local,
     Meta,
     Remote(url::Url),
+}
+
+impl FromStr for Repo {
+    type Err = url::ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "local" => Ok(Repo::Local),
+            "meta" => Ok(Repo::Meta),
+            _ => url::Url::parse(s).map(Repo::Remote),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Repo {
+    fn deserialize<D>(deserializer: D) -> Result<Repo, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Repo::from_str(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 impl std::fmt::Display for Repo {
@@ -179,6 +202,9 @@ pub enum Error {
 
     #[error("Failed to parse: `{0}`")]
     Yaml(String, #[source] serde_yaml::Error),
+
+    #[error("Invalid repo URL: {0}")]
+    RepoUrl(#[from] url::ParseError),
 }
 
 pub fn read_config(path: &Path) -> Result<ConfigWire, Error> {

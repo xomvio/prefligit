@@ -1,11 +1,12 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Read};
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 use serde::Serialize;
@@ -30,80 +31,90 @@ pub enum FileTag {
     Other(Cow<'static, &'static str>),
 }
 
-// static BY_EXTENSION: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
-//     "c" => &["c", "h"],
-//     "cpp" => &["cpp", "cxx", "cc", "hpp", "hxx", "hh"],
-//     "java" => &["java"],
-//     "js" => &["js"],
-//     "rs" => &["rs"],
-//     "ts" => &["ts"],
-//     "sh" => &["sh"],
-//     "bash" => &["bash"],
-//     "zsh" => &["zsh"],
-//     "fish" => &["fish"],
-//     "python" => &["py"],
-//     "ruby" => &["rb"],
-//     "perl" => &["pl", "pm"],
-//     "php" => &["php"],
-//     "html" => &["html", "htm"],
-//     "css" => &["css"],
-//     "xml" => &["xml"],
-//     "json" => &["json"],
-//     "yaml" => &["yaml", "yml"],
-//     "toml" => &["toml"],
-//     "ini" => &["ini"],
-//     "md" => &["md"],
-//     "tex" => &["tex"],
-//     "latex" => &["latex"],
-//     "sql" => &["sql"],
-//     "asm" => &["asm", "s"],
-//     "csharp" => &["cs"],
-//     "go" => &["go"],
-//     "haskell" => &["hs"],
-//     "lisp" => &["lisp"],
-//     "lua" => &["lua"],
-//     "ocaml" => &["ml"],
-//     "r" => &["r"],
-//     "scala" => &["scala"],
-//     "swift" => &["swift"],
-//     "vb" => &["vb"],
-//     "vbscript" => &["vbs"],
-//     "verilog" => &["v"],
-//     "vhdl" => &["vhd", "vhdl"],
-//     "make" => &["makefile", "Makefile", "make"],
-//     "cmake" => &["CMakeLists.txt", "cmake"],
-//     "dockerfile" => &["Dockerfile"],
-//     "plaintext" => &["txt"],
-//     "unknown" => &[""],
-// };
-//
-// static BY_FILENAME: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
-//     "Makefile" => &["make"],
-//     "Dockerfile" => &["dockerfile"],
-//     "CMakeLists.txt" => &["cmake"],
-// };
-//
-// static BY_INTERPRETER: phf::Map<&'static str, &'static [&'static str]> = phf::phf_map! {
-//     "bash" => &["sh"],
-//     "python" => &["py"],
-//     "ruby" => &["rb"],
-//     "perl" => &["pl", "pm"],
-//     "php" => &["php"],
-//     "node" => &["js"],
-//     "nodejs" => &["js"],
-//     "lua" => &["lua"],
-//     "sh" => &["sh"],
-//     "zsh" => &["zsh"],
-//     "fish" => &["fish"],
-//     "python2" => &["py"],
-//     "python3" => &["py"],
-//     "ruby2" => &["rb"],
-//     "ruby3" => &["rb"],
-//     "perl5" => &["pl", "pm"],
-//     "perl6" => &["pl", "pm"],
-//     "php5" => &["php"],
-//     "php7" => &["php"],
-// };
+fn by_extension() -> &'static HashMap<&'static str, Vec<&'static str>> {
+    static EXTENSIONS: OnceLock<HashMap<&'static str, Vec<&'static str>>> = OnceLock::new();
+    EXTENSIONS.get_or_init(|| {
+        let mut map = HashMap::new();
+        map.insert("c", vec!["c", "h"]);
+        map.insert("cpp", vec!["cpp", "cxx", "cc", "hpp", "hxx", "hh"]);
+        map.insert("java", vec!["java"]);
+        map.insert("js", vec!["js"]);
+        map.insert("rs", vec!["rs"]);
+        map.insert("ts", vec!["ts"]);
+        map.insert("sh", vec!["sh"]);
+        map.insert("bash", vec!["bash"]);
+        map.insert("zsh", vec!["zsh"]);
+        map.insert("fish", vec!["fish"]);
+        map.insert("python", vec!["py"]);
+        map.insert("ruby", vec!["rb"]);
+        map.insert("perl", vec!["pl", "pm"]);
+        map.insert("php", vec!["php"]);
+        map.insert("html", vec!["html", "htm"]);
+        map.insert("css", vec!["css"]);
+        map.insert("xml", vec!["xml"]);
+        map.insert("json", vec!["json"]);
+        map.insert("yaml", vec!["yaml", "yml"]);
+        map.insert("toml", vec!["toml"]);
+        map.insert("ini", vec!["ini"]);
+        map.insert("md", vec!["md"]);
+        map.insert("tex", vec!["tex"]);
+        map.insert("latex", vec!["latex"]);
+        map.insert("sql", vec!["sql"]);
+        map.insert("asm", vec!["asm", "s"]);
+        map.insert("csharp", vec!["cs"]);
+        map.insert("go", vec!["go"]);
+        map.insert("haskell", vec!["hs"]);
+        map.insert("lisp", vec!["lisp"]);
+        map.insert("lua", vec!["lua"]);
+        map.insert("ocaml", vec!["ml"]);
+        map.insert("r", vec!["r"]);
+        map.insert("scala", vec!["scala"]);
+        map.insert("swift", vec!["swift"]);
+        map.insert("vb", vec!["vb"]);
+        map.insert("vbscript", vec!["vbs"]);
+        map.insert("verilog", vec!["v"]);
+        map.insert("vhdl", vec!["vhd", "vhdl"]);
+        map
+    })
+}
+
+fn by_filename() -> &'static HashMap<&'static str, Vec<&'static str>> {
+    static FILENAMES: OnceLock<HashMap<&'static str, Vec<&'static str>>> = OnceLock::new();
+    FILENAMES.get_or_init(|| {
+        let mut map = HashMap::new();
+        map.insert("Makefile", vec!["make"]);
+        map.insert("Dockerfile", vec!["dockerfile"]);
+        map.insert("CMakeLists.txt", vec!["cmake"]);
+        map
+    })
+}
+
+fn by_interpreter() -> &'static HashMap<&'static str, Vec<&'static str>> {
+    static INTERPRETERS: OnceLock<HashMap<&'static str, Vec<&'static str>>> = OnceLock::new();
+    INTERPRETERS.get_or_init(|| {
+        let mut map = HashMap::new();
+        map.insert("bash", vec!["sh"]);
+        map.insert("python", vec!["py"]);
+        map.insert("ruby", vec!["rb"]);
+        map.insert("perl", vec!["pl", "pm"]);
+        map.insert("php", vec!["php"]);
+        map.insert("node", vec!["js"]);
+        map.insert("nodejs", vec!["js"]);
+        map.insert("lua", vec!["lua"]);
+        map.insert("sh", vec!["sh"]);
+        map.insert("zsh", vec!["zsh"]);
+        map.insert("fish", vec!["fish"]);
+        map.insert("python2", vec!["py"]);
+        map.insert("python3", vec!["py"]);
+        map.insert("ruby2", vec!["rb"]);
+        map.insert("ruby3", vec!["rb"]);
+        map.insert("perl5", vec!["pl", "pm"]);
+        map.insert("perl6", vec!["pl", "pm"]);
+        map.insert("php5", vec!["php"]);
+        map.insert("php7", vec!["php"]);
+        map
+    })
+}
 
 impl FileTag {
     pub fn is_type_tag(&self) -> bool {
@@ -187,11 +198,11 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<FileTag>> {
 }
 
 fn tags_from_file_name(_filename: String) -> Result<Vec<FileTag>> {
-    Ok(Vec::new())
+    todo!()
 }
 
 fn tags_from_interpreter(_interpreter: &[String]) -> Vec<FileTag> {
-    Vec::new()
+    todo!()
 }
 
 #[derive(thiserror::Error, Debug)]
