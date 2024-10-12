@@ -1,11 +1,13 @@
+use std::fmt::Display;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
 
 use anyhow::Result;
+use assert_cmd::output::OutputOkExt;
 
-static GIT: LazyLock<PathBuf> =
-    LazyLock::new(|| which::which("git").expect("`git` not found in PATH"));
+static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|| which::which("git"));
 
 static GIT_ENV: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
     let keep = &[
@@ -30,44 +32,73 @@ static GIT_ENV: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
         .collect()
 });
 
-fn git_cmd() -> Command {
-    let mut cmd = Command::new(&*GIT);
+fn git_cmd() -> Result<Command> {
+    let mut cmd = Command::new(GIT.deref().as_ref()?);
     cmd.arg("-c").arg("core.useBuiltinFSMonitor=false");
     cmd.envs(GIT_ENV.iter().cloned());
 
-    cmd
+    Ok(cmd)
 }
 
 pub fn has_unmerged_paths(path: &Path) -> Result<bool> {
-    let output = git_cmd()
+    let output = git_cmd()?
         .arg("ls-files")
         .arg("--unmerged")
         .current_dir(path)
-        .output()?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "`git ls-files` failed\nstdout: {}\nstderr: {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr),
-        );
-    }
+        .ok()?;
     Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
 pub fn is_dirty(path: &Path) -> Result<bool> {
-    let output = git_cmd()
+    let output = git_cmd()?
         .arg("diff")
         .arg("--quiet") // Implies `--exit-code`
         .arg("--no-ext-diff") // Disable external diff drivers
         .arg(path)
-        .output()?;
-    match output.status.code() {
-        Some(0) => Ok(false),
-        Some(1) => Ok(true),
-        _ => anyhow::bail!(
-            "`git diff` failed\nstdout: {}\nstderr: {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr),
-        ),
+        .ok();
+    match output {
+        Ok(_) => Ok(false),
+        Err(err) => {
+            if err
+                .as_output()
+                .is_some_and(|output| output.status.code() == Some(1))
+            {
+                Ok(true)
+            } else {
+                Err(err.into())
+            }
+        }
     }
+}
+
+pub fn init_repo(url: &str, path: &Path) -> Result<()> {
+    git_cmd()?
+        .arg("init")
+        .arg("--template=")
+        .arg(path)
+        .ok()?;
+
+    git_cmd()?
+        .current_dir(path)
+        .arg("remote")
+        .arg("add")
+        .arg("origin")
+        .arg(url)
+        .ok()?;
+
+    Ok(())
+}
+
+pub fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
+    git_cmd()?
+        .current_dir(path)
+        .arg("-c")
+        .arg("protocol.version=2")
+        .arg("fetch")
+        .arg("origin")
+        .arg(rev)
+        .arg("--depth=1")
+        .ok()?;
+
+    Ok(())
 }

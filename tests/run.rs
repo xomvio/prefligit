@@ -38,5 +38,14 @@ fn run() -> Result<()> {
     ----- stderr -----
     "#);
 
+    cmd_snapshot!(context.filters(), context.run().arg("typos").arg("--hook-stage").arg("pre-push"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Running hook: typos
+
+    ----- stderr -----
+    "#);
+
     Ok(())
 }

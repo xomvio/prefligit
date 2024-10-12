@@ -4,39 +4,20 @@ use anyhow::Result;
 
 use crate::cli::ExitStatus;
 use crate::config::{read_config, ConfigWire, RepoWire, Stage, CONFIG_FILE};
-use crate::fs::CWD;
+use crate::hook::Project;
 use crate::store::Store;
-
-pub struct Repository {
-    root: PathBuf,
-    config: ConfigWire,
-}
-
-impl Repository {
-    pub fn from_directory(root: PathBuf, config: Option<PathBuf>) -> Result<Self> {
-        let config_path = config.unwrap_or_else(|| root.join(CONFIG_FILE));
-        let config = read_config(&config_path)?;
-        Ok(Self { root, config })
-    }
-
-    pub fn current(config: Option<PathBuf>) -> Result<Self> {
-        Self::from_directory(CWD.clone(), config)
-    }
-
-    pub fn repos(&self) -> Vec<&RepoWire> {
-        self.config.repos.iter().collect()
-    }
-}
 
 pub(crate) fn run(
     config: Option<PathBuf>,
     hook: Option<String>,
     hook_stage: Option<Stage>,
 ) -> Result<ExitStatus> {
-    let _store = Store::from_settings(None)?;
-    let repo = Repository::current(config)?;
+    let store = Store::from_settings()?;
+    let project = Project::current(config)?;
 
-    let hooks: Vec<_> = repo
+    let hooks = load_hooks(&store, &project)?;
+
+    let hooks: Vec<_> = project
         .repos()
         .iter()
         .flat_map(|repo| repo.hooks.iter())
@@ -52,6 +33,19 @@ pub(crate) fn run(
             (_, _) => true,
         })
         .collect();
+
+    if hooks.is_empty() && hook.is_some() {
+        if let Some(hook_stage) = hook_stage {
+            eprintln!(
+                "No hooks found for hook ID `{}` and stage `{:?}`",
+                hook.unwrap(),
+                hook_stage
+            );
+        } else {
+            eprintln!("No hooks found for hook ID: {}", hook.unwrap());
+        }
+        return Ok(ExitStatus::Failure);
+    }
 
     for hook in hooks {
         println!("Running hook: {}", hook.id);

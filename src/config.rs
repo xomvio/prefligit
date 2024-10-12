@@ -80,40 +80,40 @@ pub struct ConfigWire {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum Repo {
+pub enum RepoLocation {
     Local,
     Meta,
     Remote(url::Url),
 }
 
-impl FromStr for Repo {
+impl FromStr for RepoLocation {
     type Err = url::ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "local" => Ok(Repo::Local),
-            "meta" => Ok(Repo::Meta),
-            _ => url::Url::parse(s).map(Repo::Remote),
+            "local" => Ok(RepoLocation::Local),
+            "meta" => Ok(RepoLocation::Meta),
+            _ => url::Url::parse(s).map(RepoLocation::Remote),
         }
     }
 }
 
-impl<'de> Deserialize<'de> for Repo {
-    fn deserialize<D>(deserializer: D) -> Result<Repo, D::Error>
+impl<'de> Deserialize<'de> for RepoLocation {
+    fn deserialize<D>(deserializer: D) -> Result<RepoLocation, D::Error>
     where
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Repo::from_str(&s).map_err(serde::de::Error::custom)
+        RepoLocation::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
 
-impl std::fmt::Display for Repo {
+impl std::fmt::Display for RepoLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Repo::Local => write!(f, "local"),
-            Repo::Meta => write!(f, "meta"),
-            Repo::Remote(url) => write!(f, "{}", url),
+            RepoLocation::Local => write!(f, "local"),
+            RepoLocation::Meta => write!(f, "meta"),
+            RepoLocation::Remote(url) => write!(f, "{}", url),
         }
     }
 }
@@ -121,7 +121,7 @@ impl std::fmt::Display for Repo {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct RepoWire {
-    pub repo: Repo,
+    pub repo: RepoLocation,
     pub rev: Option<String>,
     pub hooks: Vec<HookWire>,
 }
@@ -133,12 +133,12 @@ impl<'de> Deserialize<'de> for RepoWire {
     {
         #[derive(Deserialize)]
         struct RepoWireInner {
-            repo: Repo,
+            repo: RepoLocation,
             rev: Option<String>,
             hooks: Vec<HookWire>,
         }
         let RepoWireInner { repo, rev, hooks } = RepoWireInner::deserialize(deserializer)?;
-        if matches!(repo, Repo::Remote(_)) && rev.is_none() {
+        if matches!(repo, RepoLocation::Remote(_)) && rev.is_none() {
             return Err(serde::de::Error::custom("rev is required for remote repos"));
         };
         Ok(RepoWire { repo, rev, hooks })
