@@ -4,11 +4,12 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
+use url::Url;
 
 pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Language {
     Conda,
@@ -42,7 +43,7 @@ impl Language {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookType {
     CommitMsg,
@@ -59,7 +60,7 @@ pub enum HookType {
 }
 
 // TODO: warn on deprecated stages
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Stage {
     Manual,
@@ -81,7 +82,7 @@ pub enum Stage {
 // TODO: warn unexpected keys
 // TODO: warn deprecated stage
 // TODO: warn sensible regex
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ConfigWire {
     pub repos: Vec<ConfigRepo>,
@@ -101,7 +102,7 @@ pub struct ConfigWire {
 pub enum RepoLocation {
     Local,
     Meta,
-    Remote(url::Url),
+    Remote(Url),
 }
 
 impl FromStr for RepoLocation {
@@ -111,7 +112,7 @@ impl FromStr for RepoLocation {
         match s {
             "local" => Ok(RepoLocation::Local),
             "meta" => Ok(RepoLocation::Meta),
-            _ => url::Url::parse(s).map(RepoLocation::Remote),
+            _ => Url::parse(s).map(RepoLocation::Remote),
         }
     }
 }
@@ -136,48 +137,83 @@ impl std::fmt::Display for RepoLocation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A remote hook in the configuration file.
+///
+/// All keys in manifest hook dict are valid in a config hook dict, but are optional.
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ConfigRemoteHook {
     pub id: String,
-    pub alias: Option<String>,
     pub name: Option<String>,
-    pub language_version: Option<String>,
+    pub entry: Option<String>,
+    pub language: Option<Language>,
+    pub alias: Option<String>,
     pub files: Option<String>,
     pub exclude: Option<String>,
     pub types: Option<Vec<String>>,
     pub types_or: Option<Vec<String>>,
     pub exclude_types: Option<Vec<String>>,
-    pub args: Option<Vec<String>>,
-    pub stages: Option<Vec<Stage>>,
     pub additional_dependencies: Option<Vec<String>>,
+    pub args: Option<Vec<String>>,
     pub always_run: Option<bool>,
-    pub verbose: Option<bool>,
+    pub fail_fast: Option<bool>,
+    pub pass_filenames: Option<bool>,
+    pub description: Option<String>,
+    pub language_version: Option<String>,
     pub log_file: Option<String>,
+    pub require_serial: Option<bool>,
+    pub stages: Option<Vec<Stage>>,
+    pub verbose: Option<bool>,
+    pub minimum_pre_commit_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-    #[serde(transparent)]
-    pub struct ConfigLocalHook(ManifestHook);
+/// A local hook in the configuration file.
+///
+/// It's the same as the manifest hook definition.
+pub type ConfigLocalHook = ManifestHook;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConfigMetaHook {}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ConfigHook {
-    Remote(ConfigRemoteHook),
-    Local(ConfigLocalHook),
-    Meta(ConfigMetaHook),
+pub enum MetaHookID {
+    CheckHooksApply,
+    CheckUselessExcludes,
+    Identify,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ConfigRepo {
-    pub repo: RepoLocation,
-    pub rev: Option<String>,
-    pub hooks: Vec<ConfigHook>,
+#[serde(deny_unknown_fields)]
+pub struct ConfigMetaHook {
+    pub id: MetaHookID,
+    // only "system" is allowed
+    pub language: Option<Language>,
+    // TODO: entry is not allowed
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigRemoteRepo {
+    pub repo: Url,
+    pub rev: String,
+    pub hooks: Vec<ConfigRemoteHook>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigLocalRepo {
+    pub repo: String,
+    pub hooks: Vec<ConfigLocalHook>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigMetaRepo {
+    pub repo: String,
+    pub hooks: Vec<ConfigMetaHook>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConfigRepo {
+    Remote(ConfigRemoteRepo),
+    Local(ConfigLocalRepo),
+    Meta(ConfigMetaRepo),
 }
 
 impl<'de> Deserialize<'de> for ConfigRepo {
@@ -186,33 +222,58 @@ impl<'de> Deserialize<'de> for ConfigRepo {
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct RepoWireInner {
+        struct RepoWire {
             repo: RepoLocation,
-            rev: Option<String>,
-            hooks: Vec<ConfigHook>,
+            #[serde(flatten)]
+            rest: serde_yaml::Value,
         }
-        let RepoWireInner { repo, rev, hooks } = RepoWireInner::deserialize(deserializer)?;
-        if matches!(repo, RepoLocation::Remote(_)) && rev.is_none() {
-            return Err(serde::de::Error::custom("rev is required for remote repos"));
-        };
 
-        if matches!(repo, RepoLocation::Local) {
-            if rev.is_some() {
-                return Err(serde::de::Error::custom("rev is not allowed for local repos"));
-            }
-            for hook in &hooks {
-                if hook.name.is_none() {
-                    return Err(serde::de::Error::custom("name is required for local hooks"));
+        let RepoWire { repo, rest } = RepoWire::deserialize(deserializer)?;
+
+        match repo {
+            RepoLocation::Remote(url) => {
+                #[derive(Deserialize)]
+                struct RemoteRepo {
+                    rev: String,
+                    hooks: Vec<ConfigRemoteHook>,
                 }
-                if hook.
+                let RemoteRepo { rev, hooks } = RemoteRepo::deserialize(rest)
+                    .map_err(|e| serde::de::Error::custom(format!("Invalid remote repo: {}", e)))?;
+                Ok(ConfigRepo::Remote(ConfigRemoteRepo {
+                    repo: url,
+                    rev,
+                    hooks,
+                }))
             }
-        };
-
-        Ok(ConfigRepo { repo, rev, hooks })
+            RepoLocation::Local => {
+                #[derive(Deserialize)]
+                struct LocalRepo {
+                    hooks: Vec<ConfigLocalHook>,
+                }
+                let LocalRepo { hooks } = LocalRepo::deserialize(rest)
+                    .map_err(|e| serde::de::Error::custom(format!("Invalid local repo: {}", e)))?;
+                Ok(ConfigRepo::Local(ConfigLocalRepo {
+                    repo: "local".to_string(),
+                    hooks,
+                }))
+            }
+            RepoLocation::Meta => {
+                #[derive(Deserialize)]
+                struct MetaRepo {
+                    hooks: Vec<ConfigMetaHook>,
+                }
+                let MetaRepo { hooks } = MetaRepo::deserialize(rest)
+                    .map_err(|e| serde::de::Error::custom(format!("Invalid meta repo: {}", e)))?;
+                Ok(ConfigRepo::Meta(ConfigMetaRepo {
+                    repo: "meta".to_string(),
+                    hooks,
+                }))
+            }
+        }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ManifestHook {
     pub id: String,
@@ -239,7 +300,7 @@ pub struct ManifestHook {
     pub minimum_pre_commit_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(transparent)]
 pub struct ManifestWire {
@@ -277,7 +338,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_rev() -> Result<()> {
+    fn parse_repos() {
+        // Local hook should not have `rev`
         let yaml = indoc::indoc! {r#"
             repos:
               - repo: local
@@ -287,8 +349,32 @@ mod tests {
                     types:
                       - rust
         "#};
-        let config: ConfigWire = serde_yaml::from_str(yaml)?;
-        insta::assert_debug_snapshot!(config);
+        let result = serde_yaml::from_str::<ConfigWire>(yaml);
+        insta::assert_debug_snapshot!(result);
+
+        let yaml = indoc::indoc! {r#"
+            repos:
+              - repo: local
+                rev: v1.0.0
+                hooks:
+                  - id: cargo-fmt
+                    name: cargo fmt
+                    types:
+                      - rust
+        "#};
+        let result = serde_yaml::from_str::<ConfigWire>(yaml);
+        insta::assert_debug_snapshot!(result);
+
+        // Remote hook should have `rev`.
+        let yaml = indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/crate-ci/typos
+                rev: v1.0.0
+                hooks:
+                  - id: typos
+        "#};
+        let result = serde_yaml::from_str::<ConfigWire>(yaml);
+        insta::assert_debug_snapshot!(result);
 
         let yaml = indoc::indoc! {r#"
             repos:
@@ -297,12 +383,48 @@ mod tests {
                   - id: typos
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("rev is required for remote repos"));
+        insta::assert_debug_snapshot!(result);
+    }
 
-        Ok(())
+    #[test]
+    fn parse_hooks() {
+        // Remote hook only `id` is required.
+        let yaml = indoc::indoc! { r#"
+            repos:
+              - repo: https://github.com/crate-ci/typos
+                rev: v1.0.0
+                hooks:
+                  - name: typos
+                    alias: typo
+        "#};
+        let result = serde_yaml::from_str::<ConfigWire>(yaml);
+        insta::assert_debug_snapshot!(result);
+
+        // Local hook should have `id`, `name`, and `entry` and `language`.
+        let yaml = indoc::indoc! { r#"
+            repos:
+              - repo: local
+                hooks:
+                  - id: cargo-fmt
+                    name: cargo fmt
+                    entry: cargo fmt
+                    types:
+                      - rust
+        "#};
+        let result = serde_yaml::from_str::<ConfigWire>(yaml);
+        insta::assert_debug_snapshot!(result);
+
+        let yaml = indoc::indoc! { r#"
+            repos:
+              - repo: local
+                hooks:
+                  - id: cargo-fmt
+                    name: cargo fmt
+                    entry: cargo fmt
+                    language: rust
+        "#};
+        let result = serde_yaml::from_str::<ConfigWire>(yaml);
+        insta::assert_debug_snapshot!(result);
     }
 
     #[test]

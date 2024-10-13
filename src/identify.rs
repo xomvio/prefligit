@@ -145,7 +145,9 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<FileTag>> {
         return Ok(vec![FileTag::Directory]);
     } else if metadata.is_symlink() {
         return Ok(vec![FileTag::Symlink]);
-    } else if cfg!(unix) {
+    }
+    #[cfg(unix)]
+    {
         let file_type = metadata.file_type();
         if file_type.is_socket() {
             return Ok(vec![FileTag::Socket]);

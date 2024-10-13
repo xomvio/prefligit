@@ -1,16 +1,13 @@
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use etcetera::BaseStrategy;
 use rusqlite::Connection;
 use thiserror::Error;
-use url::Url;
 
-use crate::config::{read_manifest, ConfigHook, ManifestHook, RepoLocation, ConfigRepo, MANIFEST_FILE};
+use crate::config::ConfigRemoteRepo;
 use crate::fs::LockedFile;
-use crate::hook::{RemoteRepo, Repo};
+use crate::hook::Repo;
 
 // TODO: define errors
 #[derive(Debug, Error)]
@@ -111,21 +108,15 @@ impl Store {
         name
     }
 
-    pub fn clone_repo(
-        &self,
-        repo: &ConfigRepo,
-        url: &Url,
-        deps: Option<Vec<String>>,
-    ) -> Result<Repo> {
+    pub fn clone_repo(&self, repo: &ConfigRemoteRepo, deps: Option<Vec<String>>) -> Result<Repo> {
         let _lock = self.lock()?;
 
-        let repo_name = Self::repo_name(url.as_str(), deps.as_ref());
-        let rev = repo.rev.as_ref().unwrap();
+        let repo_name = Self::repo_name(repo.repo.as_str(), deps.as_ref());
 
         let conn = self.conn.as_ref().unwrap();
         let mut stmt =
             conn.prepare("SELECT repo, ref, path FROM repos WHERE repo = ? AND ref = ?")?;
-        let mut rows = stmt.query([repo_name.as_str(), &rev])?;
+        let mut rows = stmt.query([repo_name.as_str(), &repo.rev])?;
         if let Some(row) = rows.next()? {
             return Ok(Repo::remote(row.get(0)?, row.get(1)?, row.get(2)?)?);
         }
@@ -144,9 +135,9 @@ impl Store {
             .as_ref()
             .unwrap()
             .prepare("INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)")?;
-        stmt.execute([repo_name.as_str(), rev, &path])?;
+        stmt.execute([repo_name.as_str(), &repo.rev, &path])?;
 
-        Repo::remote(repo_name, rev.clone(), path)
+        Repo::remote(repo_name, repo.rev.clone(), path)
     }
 
     /// Lock the store.

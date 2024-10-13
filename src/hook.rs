@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::ops::Deref;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -7,11 +8,11 @@ use thiserror::Error;
 use url::Url;
 
 use crate::config::{
-    self, read_config, read_manifest, ConfigWire, ConfigHook, Language, ManifestHook, RepoLocation,
-    ConfigRepo, Stage, CONFIG_FILE, MANIFEST_FILE,
+    self, read_config, read_manifest, ConfigLocalHook, ConfigRemoteHook, ConfigRepo, ConfigWire,
+    ManifestHook, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::CWD;
-use crate::store::{Repo, Store};
+use crate::store::Store;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -22,7 +23,7 @@ pub enum Error {
     #[error("Failed to initialize repo: {0}")]
     InitRepo(#[from] anyhow::Error),
     #[error("Hook not found: {hook} in repo {repo}")]
-    HookNotFound { hook: String, repo: RepoLocation },
+    HookNotFound { hook: String, repo: String },
 }
 
 #[derive(Debug)]
@@ -37,19 +38,11 @@ pub struct RemoteRepo {
 #[derive(Debug)]
 pub enum Repo {
     Remote(RemoteRepo),
-    Local(HashMap<String, ConfigHook>),
+    Local(HashMap<String, ConfigLocalHook>),
     Meta,
 }
 
 impl Repo {
-    pub fn new(config: &ConfigRepo, store: &Store) -> Result<Self> {
-        match &config.repo {
-            RepoLocation::Remote(url) => store.clone_repo(config, url, None),
-            RepoLocation::Local => Self::local(config.hooks.clone()),
-            RepoLocation::Meta => Ok(Self::Meta),
-        }
-    }
-
     pub fn remote(url: String, rev: String, path: String) -> Result<Self> {
         let url = Url::parse(&url).map_err(Error::InvalidUrl)?;
 
@@ -62,7 +55,7 @@ impl Repo {
             .map(|hook| (hook.id.clone(), hook))
             .collect();
 
-        Ok(Self::Remote(Self {
+        Ok(Self::Remote(RemoteRepo {
             path,
             url,
             rev,
@@ -70,7 +63,7 @@ impl Repo {
         }))
     }
 
-    pub fn local(hooks: Vec<ConfigHook>) -> Result<Self> {
+    pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self> {
         let hooks = hooks
             .into_iter()
             .map(|hook| (hook.id.clone(), hook))
@@ -118,150 +111,129 @@ impl Project {
         Self::from_directory(CWD.clone(), config)
     }
 
-    pub fn repos(&self, store: &Store) -> Result<Vec<Repo>> {
-        // TODO: init in parallel
-        self.config
-            .repos
-            .iter()
-            .map(|repo| store.init_repo(repo, None))
-            .collect::<Result<_>>()
-    }
+    // pub fn repos(&self, store: &Store) -> Result<Vec<Repo>> {
+    //     // TODO: init in parallel
+    //     self.config
+    //         .repos
+    //         .iter()
+    //         .map(|repo| store.clone_repo(repo, None))
+    //         .collect::<Result<_>>()
+    // }
 
     pub fn hooks(&self, store: &Store) -> Result<Vec<Hook>> {
         let mut hooks = Vec::new();
 
         for repo_config in &self.config.repos {
-            let repo = Repo::new(repo_config, store)?;
+            match repo_config {
+                ConfigRepo::Remote(repo_config) => {
+                    let repo = store.clone_repo(repo_config, None)?;
 
-            match repo {
-                Repo::Remote(repo) => {
                     for hook_config in &repo_config.hooks {
-                        let Some(manifest_hook) = repo.hooks.get(&hook_config.id) else {
+                        let Some(manifest_hook) = repo.get_hook(&hook_config.id) else {
                             // Check hook id is valid.
                             return Err(Error::HookNotFound {
                                 hook: hook_config.id.clone(),
-                                repo: repo_config.repo.clone(),
+                                repo: repo.to_string(),
                             })?;
                         };
 
-                        // TODO: avoid clone
                         let mut hook = Hook::from(manifest_hook.clone());
                         hook.update(hook_config);
                         hook.fill(&self.config);
                         hooks.push(hook);
                     }
                 }
-                Repo::Local(local_hooks) => {
-                    for hook_config in local_hooks.values() {
+                ConfigRepo::Local(repo_config) => {
+                    for hook_config in &repo_config.hooks {
                         let mut hook = Hook::from(hook_config.clone());
                         hook.fill(&self.config);
                         hooks.push(hook);
                     }
                 }
-                Repo::Meta => {}
+                ConfigRepo::Meta(_) => {}
             }
         }
+
         Ok(hooks)
     }
 }
 
 #[derive(Debug)]
-pub struct Hook {
-    // Basic hook fields from the manifest.
-    pub id: String,
-    pub name: String,
-    pub entry: String,
-    pub language: Language,
-    pub files: Option<String>,
-    pub exclude: Option<String>,
-    pub types: Option<Vec<String>>,
-    pub types_or: Option<Vec<String>>,
-    pub exclude_types: Option<Vec<String>>,
-    pub always_run: Option<bool>,
-    pub fail_fast: Option<bool>,
-    pub verbose: Option<bool>,
-    pub pass_filenames: Option<bool>,
-    pub require_serial: Option<bool>,
-    pub description: Option<String>,
-    pub language_version: Option<String>,
-    pub minimum_pre_commit_version: Option<String>,
-    pub args: Option<Vec<String>>,
-    pub stages: Option<Vec<Stage>>,
+pub struct Hook(ManifestHook);
 
-    // Additional fields from the repo configuration.
-    pub alias: Option<String>,
-    pub additional_dependencies: Option<Vec<String>>,
-    pub log_file: Option<String>,
+impl From<ManifestHook> for Hook {
+    fn from(hook: ManifestHook) -> Self {
+        Self(hook)
+    }
 }
 
-impl From<ConfigHook> for Hook {
-    fn from(hook: ConfigHook) -> Self {
-        Self {
-            id: hook.id,
-            name: hook.name,
-        }
+impl Deref for Hook {
+    type Target = ManifestHook;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
 impl Hook {
-    pub fn update(&mut self, repo_hook: &ConfigHook) {
-        self.alias = repo_hook.alias.clone();
+    pub fn update(&mut self, repo_hook: &ConfigRemoteHook) {
+        self.0.alias = repo_hook.alias.clone();
 
         if let Some(name) = &repo_hook.name {
-            self.name = name.clone();
+            self.0.name = name.clone();
         }
         if let Some(language_version) = &repo_hook.language_version {
-            self.language_version = Some(language_version.clone());
+            self.0.language_version = Some(language_version.clone());
         }
         if let Some(files) = &repo_hook.files {
-            self.files = Some(files.clone());
+            self.0.files = Some(files.clone());
         }
         if let Some(exclude) = &repo_hook.exclude {
-            self.exclude = Some(exclude.clone());
+            self.0.exclude = Some(exclude.clone());
         }
         if let Some(types) = &repo_hook.types {
-            self.types = Some(types.clone());
+            self.0.types = Some(types.clone());
         }
         if let Some(types_or) = &repo_hook.types_or {
-            self.types_or = Some(types_or.clone());
+            self.0.types_or = Some(types_or.clone());
         }
         if let Some(exclude_types) = &repo_hook.exclude_types {
-            self.exclude_types = Some(exclude_types.clone());
+            self.0.exclude_types = Some(exclude_types.clone());
         }
         if let Some(args) = &repo_hook.args {
-            self.args = Some(args.clone());
+            self.0.args = Some(args.clone());
         }
         if let Some(stages) = &repo_hook.stages {
-            self.stages = Some(stages.clone());
+            self.0.stages = Some(stages.clone());
         }
         if let Some(additional_dependencies) = &repo_hook.additional_dependencies {
-            self.additional_dependencies = Some(additional_dependencies.clone());
+            self.0.additional_dependencies = Some(additional_dependencies.clone());
         }
         if let Some(always_run) = &repo_hook.always_run {
-            self.always_run = Some(*always_run);
+            self.0.always_run = Some(*always_run);
         }
         if let Some(verbose) = &repo_hook.verbose {
-            self.verbose = Some(*verbose);
+            self.0.verbose = Some(*verbose);
         }
         if let Some(log_file) = &repo_hook.log_file {
-            self.log_file = Some(log_file.clone());
+            self.0.log_file = Some(log_file.clone());
         }
     }
 
     pub fn fill(&mut self, config: &ConfigWire) {
-        let language = self.language;
-        if self.language_version.is_none() {
-            self.language_version = config
+        let language = self.0.language;
+        if self.0.language_version.is_none() {
+            self.0.language_version = config
                 .default_language_version
                 .as_ref()
                 .and_then(|v| v.get(&language).cloned())
         }
-        if self.language_version.is_none() {
-            self.language_version = Some(language.default_version());
+        if self.0.language_version.is_none() {
+            self.0.language_version = Some(language.default_version());
         }
 
-        if self.stages.is_none() {
-            self.stages = config.default_stages.clone();
+        if self.0.stages.is_none() {
+            self.0.stages = config.default_stages.clone();
         }
 
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
