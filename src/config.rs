@@ -58,6 +58,7 @@ pub enum HookType {
     PrepareCommitMsg,
 }
 
+// TODO: warn on deprecated stages
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Stage {
@@ -67,8 +68,11 @@ pub enum Stage {
     PostCommit,
     PostMerge,
     PostRewrite,
+    #[serde(alias = "commit")]
     PreCommit,
+    #[serde(alias = "merge-commit")]
     PreMergeCommit,
+    #[serde(alias = "push")]
     PrePush,
     PreRebase,
     PrepareCommitMsg,
@@ -200,6 +204,7 @@ pub struct ManifestHook {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[serde(transparent)]
 pub struct ManifestWire {
     pub hooks: Vec<ManifestHook>,
 }
