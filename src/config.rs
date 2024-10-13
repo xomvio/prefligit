@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Language {
     Conda,
@@ -31,6 +31,15 @@ pub enum Language {
     Pygrep,
     Script,
     System,
+}
+
+impl Language {
+    pub fn default_version(&self) -> String {
+        match self {
+            Self::Python => "python3".to_string(),
+            _ => "latest".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, clap::ValueEnum)]
@@ -151,7 +160,7 @@ pub struct HookWire {
     pub id: String,
     pub alias: Option<String>,
     pub name: Option<String>,
-    pub language_version: Option<HashMap<Language, String>>,
+    pub language_version: Option<String>,
     pub files: Option<String>,
     pub exclude: Option<String>,
     pub types: Option<Vec<String>>,

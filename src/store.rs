@@ -1,19 +1,25 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use etcetera::BaseStrategy;
 use rusqlite::Connection;
+use thiserror::Error;
 use url::Url;
-use crate::config::{read_manifest, ManifestHook, ManifestWire, RepoLocation, RepoWire, MANIFEST_FILE};
-use crate::fs::{tempfile_in, LockedFile};
+
+use crate::config::{read_manifest, ManifestHook, RepoLocation, RepoWire, MANIFEST_FILE};
+use crate::fs::LockedFile;
+
+// TODO: define errors
+#[derive(Debug, Error)]
+pub enum Error {}
 
 #[derive(Debug)]
 pub struct Repo {
+    path: PathBuf,
     name: String,
     rev: String,
-    path: PathBuf,
     hooks: HashMap<String, ManifestHook>,
 }
 
@@ -27,7 +33,12 @@ impl Repo {
             .map(|hook| (hook.id.clone(), hook))
             .collect();
 
-        Ok(Self { name, rev, path, hooks })
+        Ok(Self {
+            path,
+            name,
+            rev,
+            hooks,
+        })
     }
 
     pub fn name(&self) -> &str {
@@ -116,74 +127,95 @@ impl Store {
     }
 
     /// List all repos.
-    pub fn repos(&self) -> rusqlite::Result<Vec<Repo>> {
+    pub fn repos(&self) -> Result<Vec<Repo>> {
         let mut stmt = self
             .conn
             .as_ref()
             .unwrap()
             .prepare("SELECT repo, ref, path FROM repos")?;
-        let repos = stmt
+
+        let rows: Vec<_> = stmt
             .query_map([], |row| {
-                Ok(Repo {
-                    name: row.get(0)?,
-                    rev: row.get(1)?,
-                    path: row.get(2)?,
-                })
+                let name: String = row.get(0)?;
+                let rev: String = row.get(1)?;
+                let path: String = row.get(2)?;
+                Ok((name, rev, path))
             })?
-            .collect();
+            .collect::<Result<_, _>>()?;
+
+        let repos = rows
+            .into_iter()
+            .map(|(name, rev, path)| Repo::from_path(name, rev, PathBuf::from(path)))
+            .collect::<Result<Vec<_>>>();
+
         repos
     }
 
-    fn repo_name(repo: &str, deps: &[String]) -> String {
+    fn repo_name(repo: &str, deps: Option<&Vec<String>>) -> String {
         let mut name = repo.to_string();
-        if !deps.is_empty() {
+        if let Some(deps) = deps {
             name.push_str(":");
+            name.push_str(&deps.join(","));
         }
-        name.push_str(&deps.join(","));
         name
     }
 
-    pub fn init_repo(&self, repo: &RepoWire) -> Result<Repo> {
+    pub fn init_repo(&self, repo: &RepoWire, deps: Option<Vec<String>>) -> Result<Repo> {
         match &repo.repo {
-            RepoLocation::Remote(url) => self.init_remote_repo(repo, url),
+            RepoLocation::Remote(url) => self.init_remote_repo(repo, url, deps),
             RepoLocation::Local => self.init_local_repo(repo),
             RepoLocation::Meta => self.init_meta_repo(repo),
         }
     }
 
-    pub fn init_remote_repo(&self, repo: &RepoWire, url: &Url) -> Result<Repo> {
-        let repo_name = Self::repo_name(url.as_str(), &deps);
+    fn init_remote_repo(
+        &self,
+        repo: &RepoWire,
+        url: &Url,
+        deps: Option<Vec<String>>,
+    ) -> Result<Repo> {
+        let _lock = self.lock()?;
+
+        let repo_name = Self::repo_name(url.as_str(), deps.as_ref());
+        let rev = repo.rev.as_ref().unwrap();
 
         let conn = self.conn.as_ref().unwrap();
         let mut stmt =
             conn.prepare("SELECT repo, ref, path FROM repos WHERE repo = ? AND ref = ?")?;
-        let mut rows = stmt.query([repo_name.as_str(), repo.rev])?;
+        let mut rows = stmt.query([repo_name.as_str(), &rev])?;
         if let Some(row) = rows.next()? {
+            let path: String = row.get(2)?;
             return Ok(Repo::from_path(
                 row.get(0)?,
                 row.get(1)?,
-                row.get(2)?,
+                PathBuf::from(path),
             )?);
         }
 
         // TODO: 临时文件 persist
         // Clone and checkout the
-        let path = tempfile::Builder::new()
+        let temp = tempfile::Builder::new()
             .prefix("repo")
-            .tempfile_in(&self.path)?;
+            .keep(true)
+            .tempdir_in(&self.path)?;
+        let path = temp.path().to_string_lossy().to_string();
 
         let mut stmt = self
             .conn
             .as_ref()
             .unwrap()
             .prepare("INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)")?;
-        stmt.execute([repo_name.as_str(), rev, &path.path().to_string_lossy()])?;
+        stmt.execute([repo_name.as_str(), rev, &path])?;
 
-        Ok(Repo {
-            name: repo_name,
-            rev: rev.to_string(),
-            path: path.path().to_string_lossy().to_string(),
-        })
+        Repo::from_path(repo_name, rev.clone(), PathBuf::from(path))
+    }
+
+    fn init_local_repo(&self, _repo: &RepoWire) -> Result<Repo> {
+        todo!()
+    }
+
+    fn init_meta_repo(&self, _repo: &RepoWire) -> Result<Repo> {
+        todo!()
     }
 
     /// Lock the store.

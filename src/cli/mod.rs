@@ -9,6 +9,7 @@ use crate::config::Stage;
 mod install;
 mod run;
 
+pub(crate) use install::install;
 pub(crate) use run::run;
 
 #[derive(Copy, Clone)]
@@ -22,6 +23,7 @@ pub(crate) enum ExitStatus {
     /// The command failed with an unexpected error.
     Error,
 
+    /// The command was interrupted.
     Interrupted,
 
     /// The command's exit status is propagated from an external command.
@@ -43,15 +45,15 @@ impl From<ExitStatus> for ExitCode {
 #[derive(Debug, Parser)]
 pub(crate) struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Commands,
+    pub(crate) command: Command,
     #[command(flatten)]
-    pub(crate) global_args: CompatGlobalArgs,
+    pub(crate) global_args: GlobalArgs,
 }
 
 #[derive(Debug, Parser)]
 #[command(next_help_heading = "Global options", next_display_order = 1000)]
 #[command(disable_help_flag = true)]
-pub(crate) struct CompatGlobalArgs {
+pub(crate) struct GlobalArgs {
     /// Path to alternate config file.
     #[arg(global = true, short, long, value_parser)]
     pub(crate) config: Option<PathBuf>,
@@ -75,18 +77,7 @@ pub(crate) struct CompatGlobalArgs {
 }
 
 #[derive(Debug, Subcommand)]
-pub(crate) enum Commands {
-    Compat(CompatNamespace),
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct CompatNamespace {
-    #[command(subcommand)]
-    pub(crate) command: CompatCommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum CompatCommand {
+pub(crate) enum Command {
     /// Install the git pre-commit hook.
     Install(InstallArgs),
     /// Create hook environments for all hooks used in the config file.
@@ -129,7 +120,7 @@ pub(crate) struct InstallArgs {
     #[arg(long)]
     pub(crate) install_hooks: bool,
 
-    #[arg(short = 't', long, value_enum)]
+    #[arg(short = 't', long, value_enum, value_delimiter = ' ')]
     pub(crate) hook_type: Vec<HookType>,
 
     /// Allow a missing `pre-commit` configuration file.

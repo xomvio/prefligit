@@ -4,7 +4,7 @@ use anstream::eprintln;
 use clap::Parser;
 use owo_colors::OwoColorize;
 
-use crate::cli::{Cli, Commands, CompatCommand, ExitStatus};
+use crate::cli::{Cli, Command, ExitStatus};
 
 mod cli;
 mod config;
@@ -31,23 +31,18 @@ fn main() -> ExitCode {
     };
 
     let result = match cli.command {
-        Commands::Compat(command) => match command.command {
-            CompatCommand::Install(options) => {
-                println!("Installing with options: {:?}", options);
-                Ok(ExitStatus::Success)
-            }
-            CompatCommand::InstallHooks => {
-                println!("Installing hooks");
-                Ok(ExitStatus::Success)
-            }
-            CompatCommand::Run(options) => {
-                cli::run(cli.global_args.config, options.hook_id, options.hook_stage)
-            }
-            _ => {
-                eprintln!("Command not implemented yet");
-                Ok(ExitStatus::Failure)
-            }
-        },
+        Command::Install(options) => cli::install(
+            cli.global_args.config,
+            options.hook_type,
+            options.install_hooks,
+        ),
+        Command::Run(options) => {
+            cli::run(cli.global_args.config, options.hook_id, options.hook_stage)
+        }
+        _ => {
+            eprintln!("Command not implemented yet");
+            Ok(ExitStatus::Failure)
+        }
     };
 
     match result {

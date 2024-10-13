@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -72,11 +71,7 @@ pub fn is_dirty(path: &Path) -> Result<bool> {
 }
 
 pub fn init_repo(url: &str, path: &Path) -> Result<()> {
-    git_cmd()?
-        .arg("init")
-        .arg("--template=")
-        .arg(path)
-        .ok()?;
+    git_cmd()?.arg("init").arg("--template=").arg(path).ok()?;
 
     git_cmd()?
         .current_dir(path)
@@ -89,7 +84,7 @@ pub fn init_repo(url: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
+fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
     git_cmd()?
         .current_dir(path)
         .arg("-c")
@@ -98,6 +93,44 @@ pub fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
         .arg("origin")
         .arg(rev)
         .arg("--depth=1")
+        .ok()?;
+
+    git_cmd()?
+        .current_dir(path)
+        .arg("checkout")
+        .arg("FETCH_HEAD")
+        .ok()?;
+
+    git_cmd()?
+        .current_dir(path)
+        .arg("-c")
+        .arg("protocol.version=2")
+        .arg("submodule")
+        .arg("update")
+        .arg("--init")
+        .arg("--recursive")
+        .arg("--depth=1")
+        .ok()?;
+
+    Ok(())
+}
+
+fn full_clone(rev: &str, path: &Path) -> Result<()> {
+    git_cmd()?
+        .current_dir(path)
+        .arg("fetch")
+        .arg("origin")
+        .arg("--tags")
+        .ok()?;
+
+    git_cmd()?.current_dir(path).arg("checkout").arg(rev).ok()?;
+
+    git_cmd()?
+        .current_dir(path)
+        .arg("submodule")
+        .arg("update")
+        .arg("--init")
+        .arg("--recursive")
         .ok()?;
 
     Ok(())
