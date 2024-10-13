@@ -12,7 +12,9 @@ pub(crate) fn run(
     hook: Option<String>,
     hook_stage: Option<Stage>,
 ) -> Result<ExitStatus> {
-    let store = Store::from_settings()?.init()?;
+    let store = Store::from_settings()?;
+    let _lock = store.lock()?;
+    let store = store.init()?;
     let project = Project::current(config)?;
 
     let hooks = project.hooks(&store)?;

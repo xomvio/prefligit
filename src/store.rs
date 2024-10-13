@@ -23,10 +23,13 @@ pub struct Store {
 impl Store {
     pub fn from_settings() -> Result<Self> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
+            trace!("Loading store from PRE_COMMIT_HOME: {}", path.to_string_lossy());
             return Ok(Self::from_path(path));
         }
         let dirs = etcetera::choose_base_strategy()?;
-        Ok(Self::from_path(dirs.cache_dir().join("pre-commit")))
+        let path = dirs.cache_dir().join("pre-commit");
+        trace!("Loading store from cache directory: {}", path.display());
+        Ok(Self::from_path(path))
     }
 
     pub fn from_path(path: impl Into<PathBuf>) -> Self {
@@ -49,8 +52,6 @@ impl Store {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(err) => return Err(err.into()),
         }
-
-        let _lock = self.lock()?;
 
         // Init the database.
         let db = self.path.join("db.db");
@@ -113,8 +114,6 @@ impl Store {
     }
 
     pub fn clone_repo(&self, repo: &ConfigRemoteRepo, deps: Option<Vec<String>>) -> Result<Repo> {
-        let _lock = self.lock()?;
-
         let repo_name = Self::repo_name(repo.repo.as_str(), deps.as_ref());
 
         let conn = self.conn.as_ref().unwrap();

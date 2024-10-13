@@ -25,6 +25,8 @@ fn main() -> ExitCode {
     })
     .expect("Error setting Ctrl-C handler");
 
+    tracing_subscriber::fmt::init();
+
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => err.exit(),
