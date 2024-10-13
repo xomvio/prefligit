@@ -10,7 +10,7 @@ fn run() -> Result<()> {
     let context = TestContext::new();
 
     fs_err::copy(
-        "tests/data/uv-pre-commit-config.yaml",
+        "files/uv-pre-commit-config.yaml",
         context.workdir().child(".pre-commit-config.yaml"),
     )?;
 

@@ -78,10 +78,13 @@ pub enum Stage {
     PrepareCommitMsg,
 }
 
+// TODO: warn unexpected keys
+// TODO: warn deprecated stage
+// TODO: warn sensible regex
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ConfigWire {
-    pub repos: Vec<RepoWire>,
+    pub repos: Vec<ConfigRepo>,
     pub default_install_hook_types: Option<Vec<HookType>>,
     pub default_language_version: Option<HashMap<Language, String>>,
     pub default_stages: Option<Vec<Stage>>,
@@ -89,6 +92,8 @@ pub struct ConfigWire {
     pub exclude: Option<String>,
     pub fail_fast: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
+    /// Configuration for pre-commit.ci service.
+    pub ci: Option<HashMap<String, serde_yaml::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -131,36 +136,9 @@ impl std::fmt::Display for RepoLocation {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct RepoWire {
-    pub repo: RepoLocation,
-    pub rev: Option<String>,
-    pub hooks: Vec<HookWire>,
-}
-
-impl<'de> Deserialize<'de> for RepoWire {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct RepoWireInner {
-            repo: RepoLocation,
-            rev: Option<String>,
-            hooks: Vec<HookWire>,
-        }
-        let RepoWireInner { repo, rev, hooks } = RepoWireInner::deserialize(deserializer)?;
-        if matches!(repo, RepoLocation::Remote(_)) && rev.is_none() {
-            return Err(serde::de::Error::custom("rev is required for remote repos"));
-        };
-        Ok(RepoWire { repo, rev, hooks })
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct HookWire {
+pub struct ConfigRemoteHook {
     pub id: String,
     pub alias: Option<String>,
     pub name: Option<String>,
@@ -180,26 +158,85 @@ pub struct HookWire {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+    #[serde(transparent)]
+    pub struct ConfigLocalHook(ManifestHook);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigMetaHook {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConfigHook {
+    Remote(ConfigRemoteHook),
+    Local(ConfigLocalHook),
+    Meta(ConfigMetaHook),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ConfigRepo {
+    pub repo: RepoLocation,
+    pub rev: Option<String>,
+    pub hooks: Vec<ConfigHook>,
+}
+
+impl<'de> Deserialize<'de> for ConfigRepo {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RepoWireInner {
+            repo: RepoLocation,
+            rev: Option<String>,
+            hooks: Vec<ConfigHook>,
+        }
+        let RepoWireInner { repo, rev, hooks } = RepoWireInner::deserialize(deserializer)?;
+        if matches!(repo, RepoLocation::Remote(_)) && rev.is_none() {
+            return Err(serde::de::Error::custom("rev is required for remote repos"));
+        };
+
+        if matches!(repo, RepoLocation::Local) {
+            if rev.is_some() {
+                return Err(serde::de::Error::custom("rev is not allowed for local repos"));
+            }
+            for hook in &hooks {
+                if hook.name.is_none() {
+                    return Err(serde::de::Error::custom("name is required for local hooks"));
+                }
+                if hook.
+            }
+        };
+
+        Ok(ConfigRepo { repo, rev, hooks })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct ManifestHook {
     pub id: String,
     pub name: String,
     pub entry: String,
     pub language: Language,
+    pub alias: Option<String>,
     pub files: Option<String>,
     pub exclude: Option<String>,
     pub types: Option<Vec<String>>,
     pub types_or: Option<Vec<String>>,
     pub exclude_types: Option<Vec<String>>,
+    pub additional_dependencies: Option<Vec<String>>,
+    pub args: Option<Vec<String>>,
     pub always_run: Option<bool>,
     pub fail_fast: Option<bool>,
-    pub verbose: Option<bool>,
     pub pass_filenames: Option<bool>,
-    pub require_serial: Option<bool>,
     pub description: Option<String>,
     pub language_version: Option<String>,
-    pub minimum_pre_commit_version: Option<String>,
-    pub args: Option<Vec<String>>,
+    pub log_file: Option<String>,
+    pub require_serial: Option<bool>,
     pub stages: Option<Vec<Stage>>,
+    pub verbose: Option<bool>,
+    pub minimum_pre_commit_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,48 +288,7 @@ mod tests {
                       - rust
         "#};
         let config: ConfigWire = serde_yaml::from_str(yaml)?;
-        insta::assert_debug_snapshot!(config, @r###"
-        ConfigWire {
-            repos: [
-                RepoWire {
-                    repo: Local,
-                    rev: None,
-                    hooks: [
-                        HookWire {
-                            id: "cargo-fmt",
-                            alias: None,
-                            name: Some(
-                                "cargo fmt",
-                            ),
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: Some(
-                                [
-                                    "rust",
-                                ],
-                            ),
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-            ],
-            default_install_hook_types: None,
-            default_language_version: None,
-            default_stages: None,
-            files: None,
-            exclude: None,
-            fail_fast: None,
-            minimum_pre_commit_version: None,
-        }
-        "###);
+        insta::assert_debug_snapshot!(config);
 
         let yaml = indoc::indoc! {r#"
             repos:
@@ -312,268 +308,14 @@ mod tests {
     #[test]
     fn test_read_config() -> Result<()> {
         let config = read_config(Path::new("tests/data/uv-pre-commit-config.yaml"))?;
-        insta::assert_debug_snapshot!(config, @r###"
-        ConfigWire {
-            repos: [
-                RepoWire {
-                    repo: Remote(
-                        Url {
-                            scheme: "https",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: Some(
-                                Domain(
-                                    "github.com",
-                                ),
-                            ),
-                            port: None,
-                            path: "/abravalheri/validate-pyproject",
-                            query: None,
-                            fragment: None,
-                        },
-                    ),
-                    rev: Some(
-                        "v0.20.2",
-                    ),
-                    hooks: [
-                        HookWire {
-                            id: "validate-pyproject",
-                            alias: None,
-                            name: None,
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: None,
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-                RepoWire {
-                    repo: Remote(
-                        Url {
-                            scheme: "https",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: Some(
-                                Domain(
-                                    "github.com",
-                                ),
-                            ),
-                            port: None,
-                            path: "/crate-ci/typos",
-                            query: None,
-                            fragment: None,
-                        },
-                    ),
-                    rev: Some(
-                        "v1.24.6",
-                    ),
-                    hooks: [
-                        HookWire {
-                            id: "typos",
-                            alias: None,
-                            name: None,
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: None,
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-                RepoWire {
-                    repo: Local,
-                    rev: None,
-                    hooks: [
-                        HookWire {
-                            id: "cargo-fmt",
-                            alias: None,
-                            name: Some(
-                                "cargo fmt",
-                            ),
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: Some(
-                                [
-                                    "rust",
-                                ],
-                            ),
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-                RepoWire {
-                    repo: Local,
-                    rev: None,
-                    hooks: [
-                        HookWire {
-                            id: "cargo-dev-generate-all",
-                            alias: None,
-                            name: Some(
-                                "cargo dev generate-all",
-                            ),
-                            language_version: None,
-                            files: Some(
-                                "^crates/(uv-cli|uv-settings)/",
-                            ),
-                            exclude: None,
-                            types: Some(
-                                [
-                                    "rust",
-                                ],
-                            ),
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-                RepoWire {
-                    repo: Remote(
-                        Url {
-                            scheme: "https",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: Some(
-                                Domain(
-                                    "github.com",
-                                ),
-                            ),
-                            port: None,
-                            path: "/pre-commit/mirrors-prettier",
-                            query: None,
-                            fragment: None,
-                        },
-                    ),
-                    rev: Some(
-                        "v3.1.0",
-                    ),
-                    hooks: [
-                        HookWire {
-                            id: "prettier",
-                            alias: None,
-                            name: None,
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: None,
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-                RepoWire {
-                    repo: Remote(
-                        Url {
-                            scheme: "https",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: Some(
-                                Domain(
-                                    "github.com",
-                                ),
-                            ),
-                            port: None,
-                            path: "/astral-sh/ruff-pre-commit",
-                            query: None,
-                            fragment: None,
-                        },
-                    ),
-                    rev: Some(
-                        "v0.6.8",
-                    ),
-                    hooks: [
-                        HookWire {
-                            id: "ruff-format",
-                            alias: None,
-                            name: None,
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: None,
-                            types_or: None,
-                            exclude_types: None,
-                            args: None,
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                        HookWire {
-                            id: "ruff",
-                            alias: None,
-                            name: None,
-                            language_version: None,
-                            files: None,
-                            exclude: None,
-                            types: None,
-                            types_or: None,
-                            exclude_types: None,
-                            args: Some(
-                                [
-                                    "--fix",
-                                    "--exit-non-zero-on-fix",
-                                ],
-                            ),
-                            stages: None,
-                            additional_dependencies: None,
-                            always_run: None,
-                            verbose: None,
-                            log_file: None,
-                        },
-                    ],
-                },
-            ],
-            default_install_hook_types: None,
-            default_language_version: None,
-            default_stages: None,
-            files: None,
-            exclude: Some(
-                "(?x)^(\n  .*/(snapshots)/.*|\n)$\n",
-            ),
-            fail_fast: None,
-            minimum_pre_commit_version: None,
-        }
-        "###);
+        insta::assert_debug_snapshot!(config);
+        Ok(())
+    }
 
+    #[test]
+    fn test_read_manifest() -> Result<()> {
+        let manifest = read_manifest(Path::new("tests/data/uv-pre-commit-hooks.yaml"))?;
+        insta::assert_debug_snapshot!(manifest);
         Ok(())
     }
 }

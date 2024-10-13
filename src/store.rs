@@ -8,61 +8,13 @@ use rusqlite::Connection;
 use thiserror::Error;
 use url::Url;
 
-use crate::config::{read_manifest, ManifestHook, RepoLocation, RepoWire, MANIFEST_FILE};
+use crate::config::{read_manifest, ConfigHook, ManifestHook, RepoLocation, ConfigRepo, MANIFEST_FILE};
 use crate::fs::LockedFile;
+use crate::hook::{RemoteRepo, Repo};
 
 // TODO: define errors
 #[derive(Debug, Error)]
 pub enum Error {}
-
-#[derive(Debug)]
-pub struct Repo {
-    path: PathBuf,
-    name: String,
-    rev: String,
-    hooks: HashMap<String, ManifestHook>,
-}
-
-impl Repo {
-    pub fn from_path(name: String, rev: String, path: PathBuf) -> Result<Self> {
-        let path = path.join(MANIFEST_FILE);
-        let manifest = read_manifest(&path)?;
-        let hooks = manifest
-            .hooks
-            .into_iter()
-            .map(|hook| (hook.id.clone(), hook))
-            .collect();
-
-        Ok(Self {
-            path,
-            name,
-            rev,
-            hooks,
-        })
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn rev(&self) -> &str {
-        &self.rev
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn hooks(&self) -> &HashMap<String, ManifestHook> {
-        &self.hooks
-    }
-}
-
-impl Display for Repo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}@{}", self.name, self.rev)
-    }
-}
 
 pub struct Store {
     path: PathBuf,
@@ -72,21 +24,20 @@ pub struct Store {
 impl Store {
     pub fn from_settings() -> Result<Self> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
-            Self::from_path(path)
-        } else if let Ok(cache_dir) = etcetera::choose_base_strategy() {
-            Self::from_path(cache_dir.cache_dir().join("pre-commit"))
-        } else {
-            Err(anyhow::anyhow!("Could not determine cache directory"))
+            return Ok(Self::from_path(path));
+        }
+        let dirs = etcetera::choose_base_strategy()?;
+        Ok(Self::from_path(dirs.cache_dir().join("pre-commit")))
+    }
+
+    pub fn from_path(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: path.into(),
+            conn: None,
         }
     }
 
-    pub fn from_path(path: impl Into<PathBuf>) -> Result<Self> {
-        Ok(Self {
-            path: path.into(),
-            conn: None,
-        })
-    }
-
+    /// Initialize the store.
     pub fn init(self) -> Result<Self> {
         fs_err::create_dir_all(&self.path)?;
 
@@ -145,7 +96,7 @@ impl Store {
 
         let repos = rows
             .into_iter()
-            .map(|(name, rev, path)| Repo::from_path(name, rev, PathBuf::from(path)))
+            .map(|(url, rev, path)| Repo::remote(url, rev, path))
             .collect::<Result<Vec<_>>>();
 
         repos
@@ -160,17 +111,9 @@ impl Store {
         name
     }
 
-    pub fn init_repo(&self, repo: &RepoWire, deps: Option<Vec<String>>) -> Result<Repo> {
-        match &repo.repo {
-            RepoLocation::Remote(url) => self.init_remote_repo(repo, url, deps),
-            RepoLocation::Local => self.init_local_repo(repo),
-            RepoLocation::Meta => self.init_meta_repo(repo),
-        }
-    }
-
-    fn init_remote_repo(
+    pub fn clone_repo(
         &self,
-        repo: &RepoWire,
+        repo: &ConfigRepo,
         url: &Url,
         deps: Option<Vec<String>>,
     ) -> Result<Repo> {
@@ -184,12 +127,7 @@ impl Store {
             conn.prepare("SELECT repo, ref, path FROM repos WHERE repo = ? AND ref = ?")?;
         let mut rows = stmt.query([repo_name.as_str(), &rev])?;
         if let Some(row) = rows.next()? {
-            let path: String = row.get(2)?;
-            return Ok(Repo::from_path(
-                row.get(0)?,
-                row.get(1)?,
-                PathBuf::from(path),
-            )?);
+            return Ok(Repo::remote(row.get(0)?, row.get(1)?, row.get(2)?)?);
         }
 
         // TODO: 临时文件 persist
@@ -199,6 +137,7 @@ impl Store {
             .keep(true)
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
+        // TODO: git clone
 
         let mut stmt = self
             .conn
@@ -207,15 +146,7 @@ impl Store {
             .prepare("INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)")?;
         stmt.execute([repo_name.as_str(), rev, &path])?;
 
-        Repo::from_path(repo_name, rev.clone(), PathBuf::from(path))
-    }
-
-    fn init_local_repo(&self, _repo: &RepoWire) -> Result<Repo> {
-        todo!()
-    }
-
-    fn init_meta_repo(&self, _repo: &RepoWire) -> Result<Repo> {
-        todo!()
+        Repo::remote(repo_name, rev.clone(), path)
     }
 
     /// Lock the store.
