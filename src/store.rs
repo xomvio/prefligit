@@ -23,7 +23,10 @@ pub struct Store {
 impl Store {
     pub fn from_settings() -> Result<Self> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
-            trace!("Loading store from PRE_COMMIT_HOME: {}", path.to_string_lossy());
+            trace!(
+                "Loading store from PRE_COMMIT_HOME: {}",
+                path.to_string_lossy()
+            );
             return Ok(Self::from_path(path));
         }
         let dirs = etcetera::choose_base_strategy()?;

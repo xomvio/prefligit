@@ -49,3 +49,31 @@ fn run() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn invalid_hook_id() -> Result<()> {
+    let context = TestContext::new();
+
+    fs_err::write(
+        context.workdir().child(".pre-commit-config.yaml"),
+        indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/abravalheri/validate-pyproject
+                rev: v0.20.2
+                hooks:
+                  - id: invalid-hook-id
+            "#
+        },
+    )?;
+
+    cmd_snapshot!(context.filters(), context.run().arg("invalid-hook-id"), @r###"
+    success: false
+    exit_code: 2
+    ----- stdout -----
+
+    ----- stderr -----
+    error: Hook not found: invalid-hook-id in repo https://github.com/abravalheri/validate-pyproject@v0.20.2
+    "###);
+
+    Ok(())
+}
