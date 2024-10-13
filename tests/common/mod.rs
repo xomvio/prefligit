@@ -9,6 +9,7 @@ use etcetera::BaseStrategy;
 
 pub struct TestContext {
     temp_dir: ChildPath,
+    home_dir: ChildPath,
 
     /// Standard filters for this test context.
     filters: Vec<(String, String)>,
@@ -28,12 +29,25 @@ impl TestContext {
         let temp_dir = ChildPath::new(root.path()).child("temp");
         fs_err::create_dir_all(&temp_dir).expect("Failed to create test working directory");
 
+        let home_dir = ChildPath::new(root.path()).child("home");
+        fs_err::create_dir_all(&home_dir).expect("Failed to create test home directory");
+
         let mut filters = Vec::new();
 
-        filters.push((temp_dir.display().to_string(), "[TEMP_DIR]/".to_string()));
+        filters.extend(
+            Self::path_patterns(&temp_dir)
+                .into_iter()
+                .map(|pattern| (pattern, "[TEMP_DIR]/".to_string())),
+        );
+        filters.extend(
+            Self::path_patterns(&home_dir)
+                .into_iter()
+                .map(|pattern| (pattern, "[HOME]/".to_string())),
+        );
 
         Self {
             temp_dir,
+            home_dir,
             filters,
             _root: root,
         }
@@ -51,6 +65,37 @@ impl TestContext {
             })
     }
 
+    /// Generate an escaped regex pattern for the given path.
+    fn path_pattern(path: impl AsRef<Path>) -> String {
+        format!(
+            // Trim the trailing separator for cross-platform directories filters
+            r"{}\\?/?",
+            regex::escape(&path.as_ref().display().to_string())
+                // Make separators platform agnostic because on Windows we will display
+                // paths with Unix-style separators sometimes
+                .replace(r"\\", r"(\\|\/)")
+        )
+    }
+
+    /// Generate various escaped regex patterns for the given path.
+    pub fn path_patterns(path: impl AsRef<Path>) -> Vec<String> {
+        let mut patterns = Vec::new();
+
+        // We can only canonicalize paths that exist already
+        if path.as_ref().exists() {
+            patterns.push(Self::path_pattern(
+                path.as_ref()
+                    .canonicalize()
+                    .expect("Failed to create canonical path"),
+            ));
+        }
+
+        // Include a non-canonicalized version
+        patterns.push(Self::path_pattern(path));
+
+        patterns
+    }
+
     /// Read a file in the temporary directory
     pub fn read(&self, file: impl AsRef<Path>) -> String {
         fs_err::read_to_string(self.temp_dir.join(&file))
@@ -61,12 +106,13 @@ impl TestContext {
         let bin = assert_cmd::cargo::cargo_bin("pre-commit-rs");
         let mut cmd = Command::new(bin);
         cmd.current_dir(self.workdir());
+        cmd.env("PRE_COMMIT_HOME", &*self.home_dir);
         cmd
     }
 
     pub fn run(&self) -> Command {
         let mut command = self.command();
-        command.arg("compat").arg("run");
+        command.arg("run");
         command
     }
 

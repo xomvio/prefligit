@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use anyhow::Result;
 use assert_cmd::output::OutputOkExt;
+use tracing::warn;
 
 static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|| which::which("git"));
 
@@ -134,4 +135,14 @@ fn full_clone(rev: &str, path: &Path) -> Result<()> {
         .ok()?;
 
     Ok(())
+}
+
+pub fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
+    init_repo(url, path)?;
+
+    shallow_clone(rev, path)
+        .inspect_err(|err| {
+            warn!(?err, "Failed to shallow clone, falling back to full clone");
+        })
+        .or_else(|_| full_clone(rev, path))
 }

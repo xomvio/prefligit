@@ -10,11 +10,11 @@ fn run() -> Result<()> {
     let context = TestContext::new();
 
     fs_err::copy(
-        "files/uv-pre-commit-config.yaml",
+        "tests/files/uv-pre-commit-config.yaml",
         context.workdir().child(".pre-commit-config.yaml"),
     )?;
 
-    cmd_snapshot!(context.filters(), context.run(), @r#"
+    cmd_snapshot!(context.filters(), context.run(), @r###"
     success: true
     exit_code: 0
     ----- stdout -----
@@ -27,25 +27,25 @@ fn run() -> Result<()> {
     Running hook: ruff
 
     ----- stderr -----
-    "#);
+    "###);
 
-    cmd_snapshot!(context.filters(), context.run().arg("typos"), @r#"
+    cmd_snapshot!(context.filters(), context.run().arg("typos"), @r###"
     success: true
     exit_code: 0
     ----- stdout -----
     Running hook: typos
 
     ----- stderr -----
-    "#);
+    "###);
 
-    cmd_snapshot!(context.filters(), context.run().arg("typos").arg("--hook-stage").arg("pre-push"), @r#"
+    cmd_snapshot!(context.filters(), context.run().arg("typos").arg("--hook-stage").arg("pre-push"), @r###"
     success: true
     exit_code: 0
     ----- stdout -----
     Running hook: typos
 
     ----- stderr -----
-    "#);
+    "###);
 
     Ok(())
 }

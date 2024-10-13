@@ -247,6 +247,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
             }
             RepoLocation::Local => {
                 #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
                 struct LocalRepo {
                     hooks: Vec<ConfigLocalHook>,
                 }
@@ -259,6 +260,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
             }
             RepoLocation::Meta => {
                 #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
                 struct MetaRepo {
                     hooks: Vec<ConfigMetaHook>,
                 }
@@ -346,11 +348,57 @@ mod tests {
                 hooks:
                   - id: cargo-fmt
                     name: cargo fmt
-                    types:
-                      - rust
+                    entry: cargo fmt --
+                    language: system
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Ok(
+            ConfigWire {
+                repos: [
+                    Local(
+                        ConfigLocalRepo {
+                            repo: "local",
+                            hooks: [
+                                ManifestHook {
+                                    id: "cargo-fmt",
+                                    name: "cargo fmt",
+                                    entry: "cargo fmt --",
+                                    language: System,
+                                    alias: None,
+                                    files: None,
+                                    exclude: None,
+                                    types: None,
+                                    types_or: None,
+                                    exclude_types: None,
+                                    additional_dependencies: None,
+                                    args: None,
+                                    always_run: None,
+                                    fail_fast: None,
+                                    pass_filenames: None,
+                                    description: None,
+                                    language_version: None,
+                                    log_file: None,
+                                    require_serial: None,
+                                    stages: None,
+                                    verbose: None,
+                                    minimum_pre_commit_version: None,
+                                },
+                            ],
+                        },
+                    ),
+                ],
+                default_install_hook_types: None,
+                default_language_version: None,
+                default_stages: None,
+                files: None,
+                exclude: None,
+                fail_fast: None,
+                minimum_pre_commit_version: None,
+                ci: None,
+            },
+        )
+        "###);
 
         let yaml = indoc::indoc! {r#"
             repos:
@@ -363,7 +411,11 @@ mod tests {
                       - rust
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Err(
+            Error("repos: Invalid local repo: unknown field `rev`, expected `hooks`", line: 2, column: 3),
+        )
+        "###);
 
         // Remote hook should have `rev`.
         let yaml = indoc::indoc! {r#"
@@ -374,7 +426,68 @@ mod tests {
                   - id: typos
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Ok(
+            ConfigWire {
+                repos: [
+                    Remote(
+                        ConfigRemoteRepo {
+                            repo: Url {
+                                scheme: "https",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: Some(
+                                    Domain(
+                                        "github.com",
+                                    ),
+                                ),
+                                port: None,
+                                path: "/crate-ci/typos",
+                                query: None,
+                                fragment: None,
+                            },
+                            rev: "v1.0.0",
+                            hooks: [
+                                ConfigRemoteHook {
+                                    id: "typos",
+                                    name: None,
+                                    entry: None,
+                                    language: None,
+                                    alias: None,
+                                    files: None,
+                                    exclude: None,
+                                    types: None,
+                                    types_or: None,
+                                    exclude_types: None,
+                                    additional_dependencies: None,
+                                    args: None,
+                                    always_run: None,
+                                    fail_fast: None,
+                                    pass_filenames: None,
+                                    description: None,
+                                    language_version: None,
+                                    log_file: None,
+                                    require_serial: None,
+                                    stages: None,
+                                    verbose: None,
+                                    minimum_pre_commit_version: None,
+                                },
+                            ],
+                        },
+                    ),
+                ],
+                default_install_hook_types: None,
+                default_language_version: None,
+                default_stages: None,
+                files: None,
+                exclude: None,
+                fail_fast: None,
+                minimum_pre_commit_version: None,
+                ci: None,
+            },
+        )
+        "###);
 
         let yaml = indoc::indoc! {r#"
             repos:
@@ -383,7 +496,11 @@ mod tests {
                   - id: typos
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Err(
+            Error("repos: Invalid remote repo: missing field `rev`", line: 2, column: 3),
+        )
+        "###);
     }
 
     #[test]
@@ -398,7 +515,11 @@ mod tests {
                     alias: typo
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Err(
+            Error("repos: Invalid remote repo: missing field `id`", line: 2, column: 3),
+        )
+        "###);
 
         // Local hook should have `id`, `name`, and `entry` and `language`.
         let yaml = indoc::indoc! { r#"
@@ -412,7 +533,11 @@ mod tests {
                       - rust
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Err(
+            Error("repos: Invalid local repo: missing field `language`", line: 2, column: 3),
+        )
+        "###);
 
         let yaml = indoc::indoc! { r#"
             repos:
@@ -424,19 +549,65 @@ mod tests {
                     language: rust
         "#};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
-        insta::assert_debug_snapshot!(result);
+        insta::assert_debug_snapshot!(result, @r###"
+        Ok(
+            ConfigWire {
+                repos: [
+                    Local(
+                        ConfigLocalRepo {
+                            repo: "local",
+                            hooks: [
+                                ManifestHook {
+                                    id: "cargo-fmt",
+                                    name: "cargo fmt",
+                                    entry: "cargo fmt",
+                                    language: Rust,
+                                    alias: None,
+                                    files: None,
+                                    exclude: None,
+                                    types: None,
+                                    types_or: None,
+                                    exclude_types: None,
+                                    additional_dependencies: None,
+                                    args: None,
+                                    always_run: None,
+                                    fail_fast: None,
+                                    pass_filenames: None,
+                                    description: None,
+                                    language_version: None,
+                                    log_file: None,
+                                    require_serial: None,
+                                    stages: None,
+                                    verbose: None,
+                                    minimum_pre_commit_version: None,
+                                },
+                            ],
+                        },
+                    ),
+                ],
+                default_install_hook_types: None,
+                default_language_version: None,
+                default_stages: None,
+                files: None,
+                exclude: None,
+                fail_fast: None,
+                minimum_pre_commit_version: None,
+                ci: None,
+            },
+        )
+        "###);
     }
 
     #[test]
     fn test_read_config() -> Result<()> {
-        let config = read_config(Path::new("tests/data/uv-pre-commit-config.yaml"))?;
+        let config = read_config(Path::new("tests/files/uv-pre-commit-config.yaml"))?;
         insta::assert_debug_snapshot!(config);
         Ok(())
     }
 
     #[test]
     fn test_read_manifest() -> Result<()> {
-        let manifest = read_manifest(Path::new("tests/data/uv-pre-commit-hooks.yaml"))?;
+        let manifest = read_manifest(Path::new("tests/files/uv-pre-commit-hooks.yaml"))?;
         insta::assert_debug_snapshot!(manifest);
         Ok(())
     }

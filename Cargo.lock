@@ -618,6 +618,7 @@ dependencies = [
  "insta-cmd",
  "itertools",
  "owo-colors",
+ "regex",
  "rusqlite",
  "serde",
  "serde_yaml",

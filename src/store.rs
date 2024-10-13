@@ -4,9 +4,11 @@ use anyhow::Result;
 use etcetera::BaseStrategy;
 use rusqlite::Connection;
 use thiserror::Error;
+use tracing::trace;
 
 use crate::config::ConfigRemoteRepo;
 use crate::fs::LockedFile;
+use crate::git::clone_repo;
 use crate::hook::Repo;
 
 // TODO: define errors
@@ -53,6 +55,7 @@ impl Store {
         // Init the database.
         let db = self.path.join("db.db");
         let conn = if !db.try_exists()? {
+            trace!("Creating database: {}", db.display());
             let conn = Connection::open(&db)?;
             conn.execute(
                 "CREATE TABLE repos (
@@ -65,6 +68,7 @@ impl Store {
             )?;
             conn
         } else {
+            trace!("Opening database: {}", db.display());
             Connection::open(&db)?
         };
 
@@ -121,14 +125,15 @@ impl Store {
             return Ok(Repo::remote(row.get(0)?, row.get(1)?, row.get(2)?)?);
         }
 
-        // TODO: 临时文件 persist
-        // Clone and checkout the
+        // Clone and checkout the repo.
         let temp = tempfile::Builder::new()
             .prefix("repo")
             .keep(true)
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
-        // TODO: git clone
+
+        trace!("Cloning {}@{}", repo.repo, repo.rev);
+        clone_repo(repo.repo.as_str(), &repo.rev, temp.path())?;
 
         let mut stmt = self
             .conn

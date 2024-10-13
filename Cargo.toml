@@ -36,6 +36,7 @@ which = "6.0.3"
 assert_fs = "1.1.2"
 insta = { version = "1.40.0", features = ["filters"] }
 insta-cmd = "0.6.0"
+regex = "1.11.0"
 
 [lints.rust]
 dead_code = "allow"
