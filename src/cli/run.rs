@@ -7,7 +7,7 @@ use crate::config::Stage;
 use crate::hook::Project;
 use crate::store::Store;
 
-pub(crate) fn run(
+pub(crate) async fn run(
     config: Option<PathBuf>,
     hook: Option<String>,
     hook_stage: Option<Stage>,
@@ -15,7 +15,7 @@ pub(crate) fn run(
     let store = Store::from_settings()?.init()?;
     let project = Project::current(config)?;
 
-    let hooks = project.hooks(&store)?;
+    let hooks = project.hooks(&store).await?;
 
     let hooks: Vec<_> = hooks
         .into_iter()

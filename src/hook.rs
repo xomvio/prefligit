@@ -4,13 +4,12 @@ use std::ops::Deref;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use thiserror::Error;
 use url::Url;
 
-use crate::config::{
-    self, read_config, read_manifest, ConfigLocalHook, ConfigRemoteHook, ConfigRepo, ConfigWire,
-    ManifestHook, CONFIG_FILE, MANIFEST_FILE,
-};
+use crate::config::{self, read_config, read_manifest, ConfigLocalHook, ConfigLocalRepo, ConfigRemoteHook, ConfigRemoteRepo, ConfigRepo, ConfigWire, ManifestHook, CONFIG_FILE, MANIFEST_FILE};
 use crate::fs::CWD;
 use crate::store::Store;
 
@@ -36,14 +35,20 @@ pub struct RemoteRepo {
 }
 
 #[derive(Debug)]
+pub struct LocalRepo {
+    path: PathBuf,
+    hooks: HashMap<String, ConfigLocalHook>,
+}
+
+#[derive(Debug)]
 pub enum Repo {
     Remote(RemoteRepo),
-    Local(HashMap<String, ConfigLocalHook>),
+    Local(LocalRepo),
     Meta,
 }
 
 impl Repo {
-    pub fn remote(url: String, rev: String, path: String) -> Result<Self> {
+    pub fn remote(url: &str, rev: &str, path: &str) -> Result<Self> {
         let url = Url::parse(&url).map_err(Error::InvalidUrl)?;
 
         let path = PathBuf::from(path);
@@ -58,18 +63,19 @@ impl Repo {
         Ok(Self::Remote(RemoteRepo {
             path,
             url,
-            rev,
+            rev: rev.to_string(),
             hooks,
         }))
     }
 
-    pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self> {
+    pub fn local(hooks: Vec<ConfigLocalHook>, path: &str) -> Result<Self> {
         let hooks = hooks
             .into_iter()
             .map(|hook| (hook.id.clone(), hook))
             .collect();
 
-        Ok(Self::Local(hooks))
+        let path = PathBuf::from(path);
+        Ok(Self::Local(LocalRepo { path, hooks }))
     }
 
     pub fn meta() -> Self {
@@ -79,7 +85,7 @@ impl Repo {
     pub fn get_hook(&self, id: &str) -> Option<&ManifestHook> {
         match self {
             Repo::Remote(repo) => repo.hooks.get(id),
-            Repo::Local(hooks) => hooks.get(id),
+            Repo::Local(repo) => repo.hooks.get(id),
             Repo::Meta => None,
         }
     }
@@ -120,17 +126,25 @@ impl Project {
     //         .collect::<Result<_>>()
     // }
 
-    pub fn hooks(&self, store: &Store) -> Result<Vec<Hook>> {
+    pub async fn hooks(&self, store: &Store) -> Result<Vec<Hook>> {
         let mut hooks = Vec::new();
 
+        // TODO: progress bar
+        // Prepare repos.
+        let mut tasks = FuturesUnordered::new();
         for repo_config in &self.config.repos {
-            match repo_config {
-                ConfigRepo::Remote(repo_config) => {
-                    let repo = store.clone_repo(repo_config, None)?;
+            tasks.push(async { (repo_config, store.prepare_repo(repo_config, None).await) });
+        }
 
-                    for hook_config in &repo_config.hooks {
+        let mut hook_tasks = FuturesUnordered::new();
+
+        while let Some((repo_config, repo)) = tasks.next().await {
+            let repo = repo?;
+            match repo_config {
+                ConfigRepo::Remote(ConfigRemoteRepo { hooks: remote_hooks, .. }) => {
+                    for hook_config in remote_hooks {
+                        // Check hook id is valid.
                         let Some(manifest_hook) = repo.get_hook(&hook_config.id) else {
-                            // Check hook id is valid.
                             return Err(Error::HookNotFound {
                                 hook: hook_config.id.clone(),
                                 repo: repo.to_string(),
@@ -140,19 +154,32 @@ impl Project {
                         let mut hook = Hook::from(manifest_hook.clone());
                         hook.update(hook_config.clone());
                         hook.fill(&self.config);
+
+                        if let Some(deps) = &hook.additional_dependencies {
+                            hook_tasks.push(store.prepare_repo(repo_config, Some(deps.clone())));
+                        }
+
                         hooks.push(hook);
                     }
                 }
-                ConfigRepo::Local(repo_config) => {
-                    for hook_config in &repo_config.hooks {
+                ConfigRepo::Local(ConfigLocalRepo {hooks: local_hooks,..}) => {
+                    for hook_config in local_hooks {
                         let mut hook = Hook::from(hook_config.clone());
                         hook.fill(&self.config);
+
+                        if let Some(deps) = &hook.additional_dependencies {
+                            hook_tasks.push(store.prepare_repo(repo_config, Some(deps.clone())));
+                        }
+
                         hooks.push(hook);
                     }
                 }
                 ConfigRepo::Meta(_) => {}
             }
         }
+
+        // Prepare hooks with `additional_dependencies` (they need separate repos).
+        hook_tasks.collect().await?;
 
         Ok(hooks)
     }

@@ -1,10 +1,10 @@
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 use std::sync::LazyLock;
 
 use anyhow::Result;
-use assert_cmd::output::OutputOkExt;
+use assert_cmd::output::{OutputError, OutputOkExt};
 use tracing::warn;
 
 static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|| which::which("git"));
@@ -40,21 +40,25 @@ fn git_cmd() -> Result<Command> {
     Ok(cmd)
 }
 
-pub fn has_unmerged_paths(path: &Path) -> Result<bool> {
+pub async fn has_unmerged_paths(path: &Path) -> Result<bool> {
     let output = git_cmd()?
         .arg("ls-files")
         .arg("--unmerged")
         .current_dir(path)
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
     Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
-pub fn is_dirty(path: &Path) -> Result<bool> {
+pub async fn is_dirty(path: &Path) -> Result<bool> {
     let output = git_cmd()?
         .arg("diff")
         .arg("--quiet") // Implies `--exit-code`
         .arg("--no-ext-diff") // Disable external diff drivers
         .arg(path)
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok();
     match output {
         Ok(_) => Ok(false),
@@ -71,7 +75,7 @@ pub fn is_dirty(path: &Path) -> Result<bool> {
     }
 }
 
-pub fn init_repo(url: &str, path: &Path) -> Result<()> {
+async fn init_repo(url: &str, path: &Path) -> Result<()> {
     git_cmd()?.arg("init").arg("--template=").arg(path).ok()?;
 
     git_cmd()?
@@ -80,12 +84,14 @@ pub fn init_repo(url: &str, path: &Path) -> Result<()> {
         .arg("add")
         .arg("origin")
         .arg(url)
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
 
     Ok(())
 }
 
-fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
+async fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
     git_cmd()?
         .current_dir(path)
         .arg("-c")
@@ -94,12 +100,16 @@ fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
         .arg("origin")
         .arg(rev)
         .arg("--depth=1")
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
 
     git_cmd()?
         .current_dir(path)
         .arg("checkout")
         .arg("FETCH_HEAD")
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
 
     git_cmd()?
@@ -111,17 +121,21 @@ fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
         .arg("--init")
         .arg("--recursive")
         .arg("--depth=1")
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
 
     Ok(())
 }
 
-fn full_clone(rev: &str, path: &Path) -> Result<()> {
+async fn full_clone(rev: &str, path: &Path) -> Result<()> {
     git_cmd()?
         .current_dir(path)
         .arg("fetch")
         .arg("origin")
         .arg("--tags")
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
 
     git_cmd()?.current_dir(path).arg("checkout").arg(rev).ok()?;
@@ -132,16 +146,18 @@ fn full_clone(rev: &str, path: &Path) -> Result<()> {
         .arg("update")
         .arg("--init")
         .arg("--recursive")
+        .output()
+        .await.map_err(OutputError::with_cause)?
         .ok()?;
 
     Ok(())
 }
 
-pub fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
+pub async fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
     init_repo(url, path)?;
 
-    shallow_clone(rev, path).or_else(|err| {
+    shallow_clone(rev, path).await.or_else(|err| async {
         warn!(?err, "Failed to shallow clone, falling back to full clone");
-        full_clone(rev, path)
+        full_clone(rev, path).await
     })
 }

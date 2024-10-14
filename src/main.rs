@@ -17,6 +17,7 @@ mod fs;
 mod git;
 mod hook;
 mod identify;
+mod languages;
 mod store;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -61,7 +62,7 @@ fn setup_logging(level: Level) -> Result<()> {
     Ok(())
 }
 
-fn run(cli: Cli) -> Result<ExitStatus> {
+async fn run(cli: Cli) -> Result<ExitStatus> {
     ColorChoice::write_global(cli.global_args.color.into());
 
     setup_logging(match cli.global_args.verbose {
@@ -80,7 +81,7 @@ fn run(cli: Cli) -> Result<ExitStatus> {
             options.install_hooks,
         ),
         Command::Run(options) => {
-            cli::run(cli.global_args.config, options.hook_id, options.hook_stage)
+            cli::run(cli.global_args.config, options.hook_id, options.hook_stage).await
         }
         _ => {
             eprintln!("Command not implemented yet");
@@ -105,6 +106,7 @@ fn main() -> ExitCode {
         Err(err) => err.exit(),
     };
 
+    let runtime = tokio::runtime
     let result = run(cli);
 
     match result {
