@@ -12,7 +12,7 @@ pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum Language {
     Conda,
     Coursier,
@@ -79,7 +79,7 @@ impl Display for Language {
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum HookType {
     CommitMsg,
     PostCheckout,
@@ -96,7 +96,7 @@ pub enum HookType {
 
 // TODO: warn on deprecated stages
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum Stage {
     Manual,
     CommitMsg,
@@ -118,7 +118,7 @@ pub enum Stage {
 // TODO: warn deprecated stage
 // TODO: warn sensible regex
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub struct ConfigWire {
     pub repos: Vec<ConfigRepo>,
     pub default_install_hook_types: Option<Vec<HookType>>,
@@ -133,7 +133,7 @@ pub struct ConfigWire {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum RepoLocation {
     Local,
     Meta,
@@ -162,7 +162,7 @@ impl<'de> Deserialize<'de> for RepoLocation {
     }
 }
 
-impl std::fmt::Display for RepoLocation {
+impl Display for RepoLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RepoLocation::Local => write!(f, "local"),
@@ -176,7 +176,7 @@ impl std::fmt::Display for RepoLocation {
 ///
 /// All keys in manifest hook dict are valid in a config hook dict, but are optional.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub struct ConfigRemoteHook {
     pub id: String,
     pub name: Option<String>,
@@ -208,7 +208,7 @@ pub struct ConfigRemoteHook {
 pub type ConfigLocalHook = ManifestHook;
 
 #[derive(Debug, Copy, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum MetaHookID {
     CheckHooksApply,
     CheckUselessExcludes,
@@ -216,7 +216,7 @@ pub enum MetaHookID {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
 pub struct ConfigMetaHook {
     pub id: MetaHookID,
@@ -311,7 +311,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub struct ManifestHook {
     pub id: String,
     pub name: String,
@@ -418,7 +418,7 @@ impl ManifestHook {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 #[serde(transparent)]
 pub struct ManifestWire {
     pub hooks: Vec<ManifestHook>,
