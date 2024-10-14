@@ -15,7 +15,9 @@ pub(crate) async fn run(
     let store = Store::from_settings()?.init()?;
     let project = Project::current(config)?;
 
+    let lock = store.lock();
     let hooks = project.hooks(&store).await?;
+    drop(lock);
 
     let hooks: Vec<_> = hooks
         .into_iter()
@@ -46,7 +48,11 @@ pub(crate) async fn run(
     }
 
     for hook in hooks {
-        println!("Running hook: {}", hook.id);
+        println!(
+            "Running hook: {} at {}",
+            hook.id,
+            hook.path().to_string_lossy()
+        );
     }
 
     Ok(ExitStatus::Success)

@@ -63,6 +63,16 @@ impl LockedFile {
         let resource = resource.to_string();
         Self::lock_file_blocking(file, &resource)
     }
+
+    /// Acquire a cross-process lock for a resource using a file at the provided path.
+    pub async fn acquire(
+        path: impl AsRef<Path>,
+        resource: impl Display,
+    ) -> Result<Self, std::io::Error> {
+        let file = fs_err::File::create(path.as_ref())?;
+        let resource = resource.to_string();
+        tokio::task::spawn_blocking(move || Self::lock_file_blocking(file, &resource)).await?
+    }
 }
 
 impl Drop for LockedFile {
@@ -132,5 +142,20 @@ pub fn copy_atomic(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Res
             ),
         )
     })?;
+    Ok(())
+}
+
+/// Recursively copy a directory and its contents.
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+    fs_err::create_dir_all(&dst)?;
+    for entry in fs_err::read_dir(src.as_ref())? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs_err::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
     Ok(())
 }

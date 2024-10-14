@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
+use tracing::warn;
 use url::Url;
 
 pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
@@ -40,6 +42,42 @@ impl Language {
             Self::Python => "python3".to_string(),
             _ => "latest".to_string(),
         }
+    }
+
+    pub fn need_env(&self) -> bool {
+        match self {
+            Self::Python => true,
+            Self::System => false,
+            _ => false,
+        }
+    }
+}
+
+impl Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Conda => "conda",
+            Self::Coursier => "coursier",
+            Self::Dart => "dart",
+            Self::Docker => "docker",
+            Self::DockerImage => "docker-image",
+            Self::Dotnet => "dotnet",
+            Self::Fail => "fail",
+            Self::Golang => "golang",
+            Self::Haskell => "haskell",
+            Self::Lua => "lua",
+            Self::Node => "node",
+            Self::Perl => "perl",
+            Self::Python => "python",
+            Self::R => "r",
+            Self::Ruby => "ruby",
+            Self::Rust => "rust",
+            Self::Swift => "swift",
+            Self::Pygrep => "pygrep",
+            Self::Script => "script",
+            Self::System => "system",
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -300,6 +338,86 @@ pub struct ManifestHook {
     pub stages: Option<Vec<Stage>>,
     pub verbose: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
+}
+
+impl ManifestHook {
+    pub fn update(&mut self, repo_hook: ConfigRemoteHook) {
+        self.alias = repo_hook.alias;
+
+        if let Some(name) = repo_hook.name {
+            self.name = name;
+        }
+        if repo_hook.language_version.is_some() {
+            self.language_version = repo_hook.language_version;
+        }
+        if repo_hook.files.is_some() {
+            self.files = repo_hook.files;
+        }
+        if repo_hook.exclude.is_some() {
+            self.exclude = repo_hook.exclude;
+        }
+        if repo_hook.types.is_some() {
+            self.types = repo_hook.types;
+        }
+        if repo_hook.types_or.is_some() {
+            self.types_or = repo_hook.types_or;
+        }
+        if repo_hook.exclude_types.is_some() {
+            self.exclude_types = repo_hook.exclude_types;
+        }
+        if repo_hook.args.is_some() {
+            self.args = repo_hook.args;
+        }
+        if repo_hook.stages.is_some() {
+            self.stages = repo_hook.stages;
+        }
+        if repo_hook.additional_dependencies.is_some() {
+            self.additional_dependencies = repo_hook.additional_dependencies;
+        }
+        if repo_hook.always_run.is_some() {
+            self.always_run = repo_hook.always_run;
+        }
+        if repo_hook.verbose.is_some() {
+            self.verbose = repo_hook.verbose;
+        }
+        if repo_hook.log_file.is_some() {
+            self.log_file = repo_hook.log_file;
+        }
+    }
+
+    pub fn fill(&mut self, config: &ConfigWire) {
+        let language = self.language;
+        if self.language_version.is_none() {
+            self.language_version = config
+                .default_language_version
+                .as_ref()
+                .and_then(|v| v.get(&language).cloned())
+        }
+        if self.language_version.is_none() {
+            self.language_version = Some(language.default_version());
+        }
+
+        if self.stages.is_none() {
+            self.stages = config.default_stages.clone();
+        }
+
+        // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
+        if !language.need_env() {
+            if self.language_version.is_some() {
+                warn!(
+                    "Language {} does not need environment, but language_version is set",
+                    language
+                );
+            }
+
+            if self.additional_dependencies.is_some() {
+                warn!(
+                    "Language {} does not need environment, but additional_dependencies is set",
+                    language
+                );
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

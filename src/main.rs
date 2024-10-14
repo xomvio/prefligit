@@ -106,8 +106,12 @@ fn main() -> ExitCode {
         Err(err) => err.exit(),
     };
 
-    let runtime = tokio::runtime
-    let result = run(cli);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create tokio runtime");
+    let result = runtime.block_on(Box::pin(run(cli)));
+    runtime.shutdown_background();
 
     match result {
         Ok(code) => code.into(),

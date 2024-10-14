@@ -14,10 +14,10 @@ anyhow = "1.0.86"
 assert_cmd = { version = "2.0.16", features = ["color"] }
 clap = { version = "4.5.16", features = ["derive"] }
 ctrlc = "3.4.5"
-etcetera = "0.8.0"
 fs-err = "2.11.0"
 fs2 = "0.4.3"
 futures = "0.3.31"
+home = "0.5.9"
 indoc = "2.0.5"
 itertools = "0.13.0"
 owo-colors = "4.1.0"

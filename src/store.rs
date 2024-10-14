@@ -1,19 +1,23 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use etcetera::BaseStrategy;
 use rusqlite::Connection;
 use thiserror::Error;
 use tracing::{debug, trace};
 
-use crate::config::{ConfigLocalRepo, ConfigRemoteRepo, ConfigRepo};
-use crate::fs::LockedFile;
+use crate::config::{ConfigLocalHook, ConfigRemoteRepo};
+use crate::fs::{copy_dir_all, LockedFile};
 use crate::git::clone_repo;
 use crate::hook::Repo;
 
 // TODO: define errors
 #[derive(Debug, Error)]
-pub enum Error {}
+pub enum Error {
+    #[error("Home directory not found")]
+    HomeNotFound,
+    #[error("Local hook {0} does not need env")]
+    LocalHookNoNeedEnv(String),
+}
 
 pub struct Store {
     path: PathBuf,
@@ -28,10 +32,18 @@ impl Store {
                 path.to_string_lossy()
             );
             return Ok(Self::from_path(path));
+        } else if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
+            let path = PathBuf::from(path).join("pre-commit");
+            debug!(
+                "Loading store from XDG_CACHE_HOME: {}",
+                path.to_string_lossy()
+            );
+            return Ok(Self::from_path(path));
         }
-        let dirs = etcetera::choose_base_strategy()?;
-        let path = dirs.cache_dir().join("pre-commit");
-        debug!("Loading store from cache directory: {}", path.display());
+
+        let home = home::home_dir().ok_or(Error::HomeNotFound)?;
+        let path = home.join(".cache").join("pre-commit");
+        debug!("Loading store from ~/.cache: {}", path.display());
         Ok(Self::from_path(path))
     }
 
@@ -155,48 +167,49 @@ impl Store {
         Ok(())
     }
 
+    // Prepare a local repo for a local hook.
+    // All local hooks same additional dependencies, e.g. no dependencies,
+    // are stored in the same directory (even they use different language).
     pub async fn prepare_local_repo(
         &self,
-        repo_config: &ConfigLocalRepo,
+        hook: &ConfigLocalHook,
         deps: Option<Vec<String>>,
-    ) -> Result<Repo> {
+    ) -> Result<PathBuf> {
+        const LOCAL_NAME: &str = "local";
         const LOCAL_REV: &str = "1";
 
-        let language = repo_config.language;
+        if !hook.language.need_env() {
+            return Err(Error::LocalHookNoNeedEnv(hook.id.clone()).into());
+        }
 
-        let path = match self.get_repo(repo_config.repo.as_str(), LOCAL_REV, deps.as_ref())? {
+        let path = match self.get_repo(LOCAL_NAME, LOCAL_REV, deps.as_ref())? {
             Some((_, _, path)) => path,
             None => {
-                let _lock = self.lock()?;
-
                 let temp = tempfile::Builder::new()
                     .prefix("repo")
                     .keep(true)
                     .tempdir_in(&self.path)?;
                 let path = temp.path().to_string_lossy().to_string();
-
-                debug!("Creating local repo at {}", path);
-                make_local_repo(repo_config.repo.as_str(), temp.path())?;
-
-                self.insert_repo(repo_config.repo.as_str(), LOCAL_REV, &path, deps)?;
+                self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
                 path
             }
         };
 
-        Repo::local(repo_config.hooks.clone(), &path)
+        Ok(PathBuf::from(path))
     }
 
+    /// Clone a remote repo into the store.
     pub async fn prepare_remote_repo(
         &self,
         repo_config: &ConfigRemoteRepo,
         deps: Option<Vec<String>>,
-    ) -> Result<Repo> {
-        if let Some((name, rev, path)) = self.get_repo(
+    ) -> Result<PathBuf> {
+        if let Some((_, _, path)) = self.get_repo(
             repo_config.repo.as_str(),
             repo_config.rev.as_str(),
             deps.as_ref(),
         )? {
-            return Ok(Repo::remote(&name, &rev, &path)?);
+            return Ok(PathBuf::from(path));
         }
 
         // Clone and checkout the repo.
@@ -206,11 +219,23 @@ impl Store {
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
 
-        debug!(
-            "Cloning {}@{} into {}",
-            repo_config.repo, repo_config.rev, path
-        );
-        clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
+        if deps.is_some() {
+            // Copy already cloned base remote repo
+            let (_, _, base_repo_path) = self
+                .get_repo(repo_config.repo.as_str(), repo_config.rev.as_str(), None)?
+                .expect("base repo should be cloned before");
+            debug!(
+                "Copying {}@{} from {} into {}",
+                repo_config.repo, repo_config.rev, base_repo_path, path
+            );
+            copy_dir_all(base_repo_path, &path)?;
+        } else {
+            debug!(
+                "Cloning {}@{} into {}",
+                repo_config.repo, repo_config.rev, path
+            );
+            clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
+        }
 
         self.insert_repo(
             repo_config.repo.as_str(),
@@ -219,19 +244,7 @@ impl Store {
             deps,
         )?;
 
-        Repo::remote(repo_config.repo.as_str(), &repo_config.rev, &path)
-    }
-
-    /// Prepare a repo in the store.
-    ///
-    /// For remote repos, clone the repo and checkout the ref.
-    /// For local repos that need a environment, create the environment.
-    pub async fn prepare_repo(&self, repo_config: &ConfigRepo, deps: Option<Vec<String>>) -> Result<Repo> {
-        match repo_config {
-            ConfigRepo::Remote(repo) => self.prepare_remote_repo(repo, deps).await,
-            ConfigRepo::Local(repo) => self.prepare_local_repo(repo, deps).await,
-            ConfigRepo::Meta(_) => todo!(),
-        }
+        Ok(PathBuf::from(path))
     }
 
     /// Lock the store.
