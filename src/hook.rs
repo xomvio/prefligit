@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::future::Future;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
@@ -16,7 +14,6 @@ use crate::config::{
     ConfigRepo, ConfigWire, ManifestHook, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::CWD;
-use crate::store;
 use crate::store::Store;
 
 #[derive(Debug, Error)]
@@ -131,6 +128,8 @@ impl Project {
     // }
 
     pub async fn hooks(&self, store: &Store) -> Result<Vec<Hook>> {
+        let mut hooks = Vec::new();
+
         // TODO: progress bar
         // Prepare remote repos.
         let mut tasks = FuturesUnordered::new();
@@ -138,7 +137,7 @@ impl Project {
             if let ConfigRepo::Remote(remote_repo @ ConfigRemoteRepo { .. }) = repo_config {
                 tasks.push(async {
                     (
-                        remote_repo,
+                        remote_repo.clone(),
                         store.prepare_remote_repo(remote_repo, None).await,
                     )
                 });
@@ -171,22 +170,15 @@ impl Project {
                 hook.update(hook_config.clone());
                 hook.fill(&self.config);
 
-                let hook_task: Pin<
-                    Box<dyn Future<Output = (ManifestHook, Result<PathBuf>)> + Send>,
-                > = if let Some(deps) = &hook.additional_dependencies {
-                    Box::pin(async move {
-                        (
-                            hook,
-                            store
-                                .prepare_remote_repo(repo_config, Some(deps.clone()))
-                                .await,
-                        )
-                    })
+                if let Some(deps) = hook.additional_dependencies.clone() {
+                    let repo_config = repo_config.clone();
+                    hook_tasks.push(async move {
+                        let path = store.prepare_remote_repo(&repo_config, Some(deps)).await;
+                        (hook, path)
+                    });
                 } else {
-                    Box::pin(async move { (hook, Ok(repo_path.clone())) })
-                };
-
-                hook_tasks.push(hook_task);
+                    hooks.push(Hook::new(hook, Some(repo_path.clone())));
+                }
             }
         }
 
@@ -207,37 +199,20 @@ impl Project {
             let mut hook = hook_config.clone();
             hook.fill(&self.config);
 
-            let hook_task: Pin<Box<dyn Future<Output = (ManifestHook, Result<PathBuf>)> + Send>> =
-                if hook.language.need_env() {
-                    Box::pin(async move {
-                        (
-                            hook,
-                            store
-                                .prepare_local_repo(&hook, hook.additional_dependencies.clone())
-                                .await,
-                        )
-                    })
-                } else {
-                    Box::pin(async move {
-                        let err = store::Error::LocalHookNoNeedEnv(hook.id.clone());
-                        (hook, Err(err.into()))
-                    })
-                };
-
-            hook_tasks.push(hook_task);
+            if hook.language.need_env() {
+                let path = store
+                    .prepare_local_repo(&hook, hook.additional_dependencies.clone())
+                    .await?;
+                hooks.push(Hook::new(hook, Some(path)));
+            } else {
+                hooks.push(Hook::new(hook, None));
+            }
         }
 
         // Prepare hooks with `additional_dependencies` (they need separate repos).
-        let mut hooks = Vec::new();
         while let Some((hook, repo_result)) = hook_tasks.next().await {
-            let path = match repo_result {
-                Ok(path) => Some(path),
-                Err(err) => match err.downcast_ref::<store::Error>() {
-                    Some(store::Error::LocalHookNoNeedEnv(_)) => None,
-                    _ => return Err(err),
-                },
-            };
-            hooks.push(Hook::new(hook, path));
+            let path = repo_result?;
+            hooks.push(Hook::new(hook, Some(path)));
         }
 
         Ok(hooks)

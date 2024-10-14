@@ -37,11 +37,8 @@ pub enum Language {
 }
 
 impl Language {
-    pub fn default_version(&self) -> String {
-        match self {
-            Self::Python => "python3".to_string(),
-            _ => "latest".to_string(),
-        }
+    pub fn default_version(&self) -> Option<String> {
+        None
     }
 
     pub fn need_env(&self) -> bool {
@@ -394,7 +391,7 @@ impl ManifestHook {
                 .and_then(|v| v.get(&language).cloned())
         }
         if self.language_version.is_none() {
-            self.language_version = Some(language.default_version());
+            self.language_version = language.default_version();
         }
 
         if self.stages.is_none() {
