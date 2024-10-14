@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 use std::str::FromStr;
 
-use anstream::eprintln;
+use anstream::{eprintln, ColorChoice};
 use anyhow::{Context, Result};
 use clap::Parser;
 use owo_colors::OwoColorize;
@@ -42,24 +42,33 @@ fn setup_logging(level: Level) -> Result<()> {
         .from_env()
         .context("Invalid RUST_LOG directive")?;
 
+    let ansi = match anstream::Stderr::choice(&std::io::stderr()) {
+        ColorChoice::Always | ColorChoice::AlwaysAnsi => true,
+        ColorChoice::Never => false,
+        // We just asked anstream for a choice, that can't be auto
+        ColorChoice::Auto => unreachable!(),
+    };
+
     let format = tracing_subscriber::fmt::format()
         .with_target(false)
-        .without_time();
+        .without_time()
+        .with_ansi(ansi);
     tracing_subscriber::fmt::fmt()
         .with_env_filter(filter)
         .event_format(format)
+        .with_writer(std::io::stderr)
         .init();
     Ok(())
 }
 
 fn run(cli: Cli) -> Result<ExitStatus> {
+    ColorChoice::write_global(cli.global_args.color.into());
+
     setup_logging(match cli.global_args.verbose {
         0 => Level::Default,
         1 => Level::Verbose,
         _ => Level::ExtraVerbose,
     })?;
-
-    anstream::ColorChoice::write_global(cli.global_args.color.into());
 
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
