@@ -138,7 +138,7 @@ impl Project {
                         };
 
                         let mut hook = Hook::from(manifest_hook.clone());
-                        hook.update(hook_config);
+                        hook.update(hook_config.clone());
                         hook.fill(&self.config);
                         hooks.push(hook);
                     }
@@ -176,47 +176,47 @@ impl Deref for Hook {
 }
 
 impl Hook {
-    pub fn update(&mut self, repo_hook: &ConfigRemoteHook) {
-        self.0.alias = repo_hook.alias.clone();
+    pub fn update(&mut self, repo_hook: ConfigRemoteHook) {
+        self.0.alias = repo_hook.alias;
 
-        if let Some(name) = &repo_hook.name {
-            self.0.name = name.clone();
+        if let Some(name) = repo_hook.name {
+            self.0.name = name;
         }
-        if let Some(language_version) = &repo_hook.language_version {
-            self.0.language_version = Some(language_version.clone());
+        if repo_hook.language_version.is_some() {
+            self.0.language_version = repo_hook.language_version;
         }
-        if let Some(files) = &repo_hook.files {
-            self.0.files = Some(files.clone());
+        if repo_hook.files.is_some() {
+            self.0.files = repo_hook.files;
         }
-        if let Some(exclude) = &repo_hook.exclude {
-            self.0.exclude = Some(exclude.clone());
+        if repo_hook.exclude.is_some() {
+            self.0.exclude = repo_hook.exclude;
         }
-        if let Some(types) = &repo_hook.types {
-            self.0.types = Some(types.clone());
+        if repo_hook.types.is_some() {
+            self.0.types = repo_hook.types;
         }
-        if let Some(types_or) = &repo_hook.types_or {
-            self.0.types_or = Some(types_or.clone());
+        if repo_hook.types_or.is_some() {
+            self.0.types_or = repo_hook.types_or;
         }
-        if let Some(exclude_types) = &repo_hook.exclude_types {
-            self.0.exclude_types = Some(exclude_types.clone());
+        if repo_hook.exclude_types.is_some() {
+            self.0.exclude_types = repo_hook.exclude_types;
         }
-        if let Some(args) = &repo_hook.args {
-            self.0.args = Some(args.clone());
+        if repo_hook.args.is_some() {
+            self.0.args = repo_hook.args;
         }
-        if let Some(stages) = &repo_hook.stages {
-            self.0.stages = Some(stages.clone());
+        if repo_hook.stages.is_some() {
+            self.0.stages = repo_hook.stages;
         }
-        if let Some(additional_dependencies) = &repo_hook.additional_dependencies {
-            self.0.additional_dependencies = Some(additional_dependencies.clone());
+        if repo_hook.additional_dependencies.is_some() {
+            self.0.additional_dependencies = repo_hook.additional_dependencies;
         }
-        if let Some(always_run) = &repo_hook.always_run {
-            self.0.always_run = Some(*always_run);
+        if repo_hook.always_run.is_some() {
+            self.0.always_run = repo_hook.always_run;
         }
-        if let Some(verbose) = &repo_hook.verbose {
-            self.0.verbose = Some(*verbose);
+        if repo_hook.verbose.is_some() {
+            self.0.verbose = repo_hook.verbose;
         }
-        if let Some(log_file) = &repo_hook.log_file {
-            self.0.log_file = Some(log_file.clone());
+        if repo_hook.log_file.is_some() {
+            self.0.log_file = repo_hook.log_file;
         }
     }
 

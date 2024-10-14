@@ -140,9 +140,8 @@ fn full_clone(rev: &str, path: &Path) -> Result<()> {
 pub fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
     init_repo(url, path)?;
 
-    shallow_clone(rev, path)
-        .inspect_err(|err| {
-            warn!(?err, "Failed to shallow clone, falling back to full clone");
-        })
-        .or_else(|_| full_clone(rev, path))
+    shallow_clone(rev, path).or_else(|err| {
+        warn!(?err, "Failed to shallow clone, falling back to full clone");
+        full_clone(rev, path)
+    })
 }

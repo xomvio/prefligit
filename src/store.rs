@@ -4,7 +4,7 @@ use anyhow::Result;
 use etcetera::BaseStrategy;
 use rusqlite::Connection;
 use thiserror::Error;
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::config::ConfigRemoteRepo;
 use crate::fs::LockedFile;
@@ -23,7 +23,7 @@ pub struct Store {
 impl Store {
     pub fn from_settings() -> Result<Self> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
-            trace!(
+            debug!(
                 "Loading store from PRE_COMMIT_HOME: {}",
                 path.to_string_lossy()
             );
@@ -31,7 +31,7 @@ impl Store {
         }
         let dirs = etcetera::choose_base_strategy()?;
         let path = dirs.cache_dir().join("pre-commit");
-        trace!("Loading store from cache directory: {}", path.display());
+        debug!("Loading store from cache directory: {}", path.display());
         Ok(Self::from_path(path))
     }
 
@@ -55,6 +55,8 @@ impl Store {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(err) => return Err(err.into()),
         }
+
+        let _lock = self.lock()?;
 
         // Init the database.
         let db = self.path.join("db.db");
@@ -127,6 +129,8 @@ impl Store {
             return Ok(Repo::remote(row.get(0)?, row.get(1)?, row.get(2)?)?);
         }
 
+        let _lock = self.lock()?;
+
         // Clone and checkout the repo.
         let temp = tempfile::Builder::new()
             .prefix("repo")
@@ -134,7 +138,7 @@ impl Store {
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
 
-        trace!("Cloning {}@{}", repo.repo, repo.rev);
+        debug!("Cloning {}@{} into {}", repo.repo, repo.rev, path);
         clone_repo(repo.repo.as_str(), &repo.rev, temp.path())?;
 
         let mut stmt = self
