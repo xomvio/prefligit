@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{ArgAction, Args, ColorChoice, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use crate::config::Stage;
 
@@ -38,6 +38,28 @@ impl From<ExitStatus> for ExitCode {
             ExitStatus::Error => Self::from(2),
             ExitStatus::Interrupted => Self::from(130),
             ExitStatus::External(code) => Self::from(code),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, clap::ValueEnum)]
+pub enum ColorChoice {
+    /// Enables colored output only when the output is going to a terminal or TTY with support.
+    Auto,
+
+    /// Enables colored output regardless of the detected environment.
+    Always,
+
+    /// Disables colored output.
+    Never,
+}
+
+impl From<ColorChoice> for anstream::ColorChoice {
+    fn from(value: ColorChoice) -> Self {
+        match value {
+            ColorChoice::Auto => Self::Auto,
+            ColorChoice::Always => Self::Always,
+            ColorChoice::Never => Self::Never,
         }
     }
 }
