@@ -341,6 +341,7 @@ pub struct ManifestHook {
     pub entry: String,
     pub language: Language,
     pub alias: Option<String>,
+    /// the pattern of files to run on
     pub files: Option<String>,
     pub exclude: Option<String>,
     #[serde(default, deserialize_with = "deserialize_option_vec")]

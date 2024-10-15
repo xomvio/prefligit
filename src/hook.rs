@@ -10,7 +10,7 @@ use url::Url;
 
 use crate::config::{
     self, read_config, read_manifest, ConfigLocalHook, ConfigLocalRepo, ConfigRemoteRepo,
-    ConfigRepo, ConfigWire, ManifestHook, CONFIG_FILE, MANIFEST_FILE,
+    ConfigRepo, ConfigWire, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::CWD;
 use crate::store::Store;
@@ -194,7 +194,7 @@ impl Project {
             hook.fill(&self.config);
 
             // If the hook doesn't need an environment, don't do any preparation.
-            if hook.language.need_env() {
+            if hook.language.need_environment() {
                 let path = store
                     .prepare_local_repo(&hook, hook.additional_dependencies.clone())
                     .await
@@ -216,19 +216,71 @@ pub struct Hook {
 }
 
 impl Hook {
+    /// Create a new hook with a configuration and an optional path.
+    /// The path is `None` if the hook doesn't need a environment.
     pub fn new(config: ManifestHook, path: Option<PathBuf>) -> Self {
         Self { config, path }
     }
 
+    /// Get the working directory for the hook.
     pub fn path(&self) -> &Path {
         self.path.as_ref().unwrap_or(&CWD)
     }
-}
 
-impl Deref for Hook {
-    type Target = ManifestHook;
+    pub fn language_version(&self) -> &str {
+        self.config
+            .language_version
+            .as_ref()
+            .map_or("default", Deref::deref)
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.config
+    pub fn id(&self) -> &str {
+        &self.config.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.config.name
+    }
+
+    pub fn alias(&self) -> Option<&str> {
+        self.config.alias.as_deref()
+    }
+
+    pub fn files(&self) -> &str {
+        self.config.files.as_ref().map_or("", Deref::deref)
+    }
+
+    pub fn exclude(&self) -> &str {
+        self.config.exclude.as_ref().map_or("^$", Deref::deref)
+    }
+
+    pub fn types(&self) -> Vec<&str> {
+        self.config
+            .types
+            .as_ref()
+            .map_or_else(|| vec!["file"], |t| t.iter().map(Deref::deref).collect())
+    }
+
+    pub fn stages(&self) -> Option<&Vec<Stage>> {
+        self.config.stages.as_ref()
+    }
+
+    /// Get the environment directory that the hook will be installed to.
+    fn environment_dir(&self) -> PathBuf {
+        let lang = self.config.language;
+        self.path()
+            // TODO
+            .join(lang.environment_dir().unwrap())
+            .join(self.language_version())
+    }
+
+    /// Check if the hook is installed.
+    pub fn installed(&self) -> bool {
+        if self.path.is_none() {
+            return true;
+        };
+
+        // let lang = self.config.language;
+        false
     }
 }
