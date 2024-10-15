@@ -41,12 +41,15 @@ impl Language {
         None
     }
 
-    pub fn need_env(&self) -> bool {
+    pub fn need_environment(&self) -> bool {
+        self.environment_dir().is_some()
+    }
+
+    pub fn environment_dir(&self) -> Option<String> {
         match self {
-            Self::Python => true,
-            Self::Node => true,
-            Self::System => false,
-            _ => false,
+            Self::Python => Some("py_env".to_string()),
+            Self::Node => Some("node_env".to_string()),
+            _ => None,
         }
     }
 }
@@ -424,8 +427,14 @@ impl ManifestHook {
             self.stages = config.default_stages.clone();
         }
 
+        self.check();
+        self.fill_defaults();
+    }
+
+    fn check(&self) {
+        let language = self.language;
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
-        if !language.need_env() {
+        if !language.need_environment() {
             if self.language_version.is_some() {
                 warn!(
                     "Language {} does not need environment, but language_version is set",
@@ -439,6 +448,21 @@ impl ManifestHook {
                     language
                 );
             }
+        }
+    }
+
+    fn fill_defaults(&mut self) {
+        if self.minimum_pre_commit_version.is_none() {
+            self.minimum_pre_commit_version = Some("0".to_string());
+        }
+        if self.types.is_none() {
+            self.types = Some(vec!["file".to_string()]);
+        }
+        if self.pass_filenames.is_none() {
+            self.pass_filenames = Some(true);
+        }
+        if self.language_version.is_none() {
+            self.language_version = Some("default".to_string());
         }
     }
 }
@@ -455,7 +479,7 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    #[error("Failed to parse: `{0}`")]
+    #[error("Failed to parse `{0}`")]
     Yaml(String, #[source] serde_yaml::Error),
 
     #[error("Invalid repo URL: {0}")]

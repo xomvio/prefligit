@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -41,7 +40,7 @@ static GIT_ENV: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
 });
 
 fn git_cmd() -> Result<Command, Error> {
-    let mut cmd = Command::new(GIT.deref().clone()?);
+    let mut cmd = Command::new(GIT.clone()?);
     cmd.arg("-c").arg("core.useBuiltinFSMonitor=false");
     cmd.envs(GIT_ENV.iter().cloned());
 

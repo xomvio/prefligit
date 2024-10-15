@@ -78,7 +78,7 @@ impl Store {
             Err(err) => return Err(err.into()),
         }
 
-        let _lock = self.lock().map_err(Error::Io)?;
+        let _lock = self.lock()?;
 
         // Init the database.
         let db = self.path.join("db.db");
@@ -132,6 +132,7 @@ impl Store {
         repos
     }
 
+    // Append dependencies to the repo name as the key.
     fn repo_name(repo: &str, deps: Option<&Vec<String>>) -> String {
         let mut name = repo.to_string();
         if let Some(deps) = deps {
@@ -177,9 +178,9 @@ impl Store {
         Ok(())
     }
 
-    // Prepare a local repo for a local hook.
-    // All local hooks same additional dependencies, e.g. no dependencies,
-    // are stored in the same directory (even they use different language).
+    /// Prepare a local repo for a local hook.
+    /// All local hooks same additional dependencies, e.g. no dependencies,
+    /// are stored in the same directory (even they use different language).
     pub async fn prepare_local_repo(
         &self,
         hook: &ConfigLocalHook,
@@ -188,7 +189,7 @@ impl Store {
         const LOCAL_NAME: &str = "local";
         const LOCAL_REV: &str = "1";
 
-        if !hook.language.need_env() {
+        if !hook.language.need_environment() {
             return Err(Error::LocalHookNoNeedEnv(hook.id.clone()).into());
         }
 
@@ -276,6 +277,7 @@ impl Store {
     }
 }
 
+// TODO
 fn make_local_repo(_repo: &str, path: &Path) -> Result<(), Error> {
     fs_err::create_dir_all(path)?;
 

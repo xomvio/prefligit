@@ -46,6 +46,8 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Failure);
     }
 
+    // TODO: apply skips
+
     // store.install_hooks(&hooks).await?;
     drop(lock);
 
