@@ -64,17 +64,34 @@ impl From<ColorChoice> for anstream::ColorChoice {
     }
 }
 
-#[derive(Debug, Parser)]
+#[derive(Parser)]
+#[command(
+    name = "pre-commit",
+    author,
+    version,
+    about = "pre-commit reimplemented in Rust"
+)]
+#[command(propagate_version = true)]
+#[command(
+    disable_help_flag = true,
+    disable_help_subcommand = true,
+    disable_version_flag = true
+)]
 pub(crate) struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Command,
+    pub(crate) command: Option<Command>,
+
+    // run as the default subcommand
     #[command(flatten)]
-    pub(crate) global_args: GlobalArgs,
+    pub(crate) run_args: RunArgs,
+
+    #[command(flatten)]
+    pub(crate) globals: GlobalArgs,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 #[command(next_help_heading = "Global options", next_display_order = 1000)]
-#[command(disable_help_flag = true)]
+#[command(disable_help_flag = true, disable_version_flag = true)]
 pub(crate) struct GlobalArgs {
     /// Path to alternate config file.
     #[arg(global = true, short, long, value_parser)]
@@ -93,14 +110,29 @@ pub(crate) struct GlobalArgs {
     #[arg(global = true, short, long, action = clap::ArgAction::HelpShort)]
     help: Option<bool>,
 
+    /// Hide all progress outputs.
+    ///
+    /// For example, spinners or progress bars.
+    #[arg(global = true, long)]
+    pub no_progress: bool,
+
+    /// Do not print any output.
+    #[arg(global = true, long, short, conflicts_with = "verbose")]
+    pub quiet: bool,
+
     /// Use verbose output.
     #[arg(global = true, short, long, action = ArgAction::Count)]
     pub(crate) verbose: u8,
+
+    /// Display the pre-commit version.
+    #[arg(global = true, short = 'V', long, action = clap::ArgAction::Version)]
+    version: Option<bool>,
 }
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     /// Install the git pre-commit hook.
+    #[command(name = "install")]
     Install(InstallArgs),
     /// Create hook environments for all hooks used in the config file.
     InstallHooks,

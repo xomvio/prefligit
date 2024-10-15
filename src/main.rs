@@ -10,6 +10,7 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::EnvFilter;
 
 use crate::cli::{Cli, Command, ExitStatus};
+use crate::printer::Printer;
 
 mod cli;
 mod config;
@@ -18,6 +19,7 @@ mod git;
 mod hook;
 mod identify;
 mod languages;
+mod printer;
 mod store;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -63,25 +65,43 @@ fn setup_logging(level: Level) -> Result<()> {
 }
 
 async fn run(cli: Cli) -> Result<ExitStatus> {
-    ColorChoice::write_global(cli.global_args.color.into());
+    ColorChoice::write_global(cli.globals.color.into());
 
-    setup_logging(match cli.global_args.verbose {
+    setup_logging(match cli.globals.verbose {
         0 => Level::Default,
         1 => Level::Verbose,
         _ => Level::ExtraVerbose,
     })?;
 
+    let printer = if cli.globals.quiet {
+        Printer::Quiet
+    } else if cli.globals.verbose > 0 {
+        Printer::Verbose
+    } else if cli.globals.no_progress {
+        Printer::NoProgress
+    } else {
+        Printer::Default
+    };
+
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
 
-    match cli.command {
+    let command = cli.command.unwrap_or(Command::Run(cli.run_args));
+    match command {
         Command::Install(options) => cli::install(
-            cli.global_args.config,
+            cli.globals.config,
             options.hook_type,
             options.install_hooks,
+            printer,
         ),
         Command::Run(options) => {
-            cli::run(cli.global_args.config, options.hook_id, options.hook_stage).await
+            cli::run(
+                cli.globals.config,
+                options.hook_id,
+                options.hook_stage,
+                printer,
+            )
+            .await
         }
         _ => {
             eprintln!("Command not implemented yet");
