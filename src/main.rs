@@ -22,6 +22,7 @@ mod identify;
 mod languages;
 mod printer;
 mod store;
+mod warnings;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Level {
@@ -83,6 +84,12 @@ async fn run(cli: Cli) -> Result<ExitStatus> {
     } else {
         Printer::Default
     };
+
+    if cli.globals.quiet {
+        warnings::disable();
+    } else {
+        warnings::enable();
+    }
 
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));

@@ -8,6 +8,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use tracing::warn;
 use url::Url;
 
+use crate::warn_user;
+
 pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
 
@@ -436,14 +438,14 @@ impl ManifestHook {
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
         if !language.need_environment() {
             if self.language_version.is_some() {
-                warn!(
+                warn_user!(
                     "Language {} does not need environment, but language_version is set",
                     language
                 );
             }
 
             if self.additional_dependencies.is_some() {
-                warn!(
+                warn_user!(
                     "Language {} does not need environment, but additional_dependencies is set",
                     language
                 );
