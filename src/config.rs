@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
-use tracing::warn;
 use url::Url;
 
 use crate::warn_user;
@@ -370,6 +369,7 @@ pub struct ManifestHook {
 }
 
 impl ManifestHook {
+    /// Update the hook from the project level hook configuration.
     pub fn update(&mut self, repo_hook: ConfigRemoteHook) {
         self.alias = repo_hook.alias;
 

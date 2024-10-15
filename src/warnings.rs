@@ -47,10 +47,10 @@ pub fn disable() {
 #[macro_export]
 macro_rules! warn_user {
     ($($arg:tt)*) => {
-        use $crate::anstream::eprintln;
-        use $crate::owo_colors::OwoColorize;
+        use $crate::warnings::anstream::eprintln;
+        use $crate::warnings::owo_colors::OwoColorize;
 
-        if $crate::ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
+        if $crate::warnings::ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
             let message = format!("{}", format_args!($($arg)*));
             let formatted = message.bold();
             eprintln!("{}{} {formatted}", "warning".yellow().bold(), ":".bold());
@@ -65,11 +65,11 @@ pub static WARNINGS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::def
 #[macro_export]
 macro_rules! warn_user_once {
     ($($arg:tt)*) => {
-        use $crate::anstream::eprintln;
-        use $crate::owo_colors::OwoColorize;
+        use $crate::warnings::anstream::eprintln;
+        use $crate::warnings::::owo_colors::OwoColorize;
 
-        if $crate::ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Ok(mut states) = $crate::WARNINGS.lock() {
+        if $crate::warnings::ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
+            if let Ok(mut states) = $crate::warnings::WARNINGS.lock() {
                 let message = format!("{}", format_args!($($arg)*));
                 if states.insert(message.clone()) {
                     eprintln!("{}{} {}", "warning".yellow().bold(), ":".bold(), message.bold());
