@@ -23,6 +23,8 @@ pub enum Error {
     ReadConfig(#[from] config::Error),
     #[error("Hook not found: {hook} in repo {repo}")]
     HookNotFound { hook: String, repo: String },
+    #[error(transparent)]
+    Store(#[from] Box<crate::store::Error>),
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +67,7 @@ impl Repo {
     }
 
     /// Construct a local repo from a list of hooks.
-    pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self> {
+    pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self, Error> {
         Ok(Self::Local(LocalRepo { hooks }))
     }
 
@@ -101,19 +103,19 @@ pub struct Project {
 
 impl Project {
     /// Load a project configuration from a directory.
-    pub fn from_directory(root: PathBuf, config: Option<PathBuf>) -> Result<Self> {
+    pub fn from_directory(root: PathBuf, config: Option<PathBuf>) -> Result<Self, Error> {
         let config_path = config.unwrap_or_else(|| root.join(CONFIG_FILE));
         let config = read_config(&config_path)?;
         Ok(Self { root, config })
     }
 
     /// Load project configuration from the current directory.
-    pub fn current(config: Option<PathBuf>) -> Result<Self> {
+    pub fn current(config: Option<PathBuf>) -> Result<Self, Error> {
         Self::from_directory(CWD.clone(), config)
     }
 
     /// Load and prepare hooks for the project.
-    pub async fn hooks(&self, store: &Store) -> Result<Vec<Hook>> {
+    pub async fn hooks(&self, store: &Store) -> Result<Vec<Hook>, Error> {
         let mut hooks = Vec::new();
 
         // TODO: progress bar
@@ -133,7 +135,7 @@ impl Project {
         }
 
         while let Some((repo_config, repo_path)) = tasks.next().await {
-            let repo_path = repo_path?;
+            let repo_path = repo_path.map_err(Box::new)?;
 
             // Read the repo manifest.
             let repo = Repo::remote(
@@ -168,6 +170,12 @@ impl Project {
             }
         }
 
+        // Prepare hooks with `additional_dependencies` (they need separate repos).
+        while let Some((hook, repo_result)) = hook_tasks.next().await {
+            let path = repo_result.map_err(Box::new)?;
+            hooks.push(Hook::new(hook, Some(path)));
+        }
+
         // Prepare local hooks.
         let local_hooks = self
             .config
@@ -189,17 +197,12 @@ impl Project {
             if hook.language.need_env() {
                 let path = store
                     .prepare_local_repo(&hook, hook.additional_dependencies.clone())
-                    .await?;
+                    .await
+                    .map_err(Box::new)?;
                 hooks.push(Hook::new(hook, Some(path)));
             } else {
                 hooks.push(Hook::new(hook, None));
             }
-        }
-
-        // Prepare hooks with `additional_dependencies` (they need separate repos).
-        while let Some((hook, repo_result)) = hook_tasks.next().await {
-            let path = repo_result?;
-            hooks.push(Hook::new(hook, Some(path)));
         }
 
         Ok(hooks)

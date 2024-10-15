@@ -27,6 +27,8 @@ pub enum Error {
     Git(#[from] crate::git::Error),
 }
 
+/// A store for managing repos.
+#[derive(Debug)]
 pub struct Store {
     path: PathBuf,
     conn: Option<Connection>,
@@ -197,7 +199,10 @@ impl Store {
                     .prefix("repo")
                     .keep(true)
                     .tempdir_in(&self.path)?;
+
                 let path = temp.path().to_string_lossy().to_string();
+                debug!("Preparing local repo {} at {}", hook.id, path);
+                make_local_repo(LOCAL_NAME, temp.path())?;
                 self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
                 path
             }
@@ -271,7 +276,7 @@ impl Store {
     }
 }
 
-fn make_local_repo(_repo: &str, path: &Path) -> Result<()> {
+fn make_local_repo(_repo: &str, path: &Path) -> Result<(), Error> {
     fs_err::create_dir_all(path)?;
 
     Ok(())
