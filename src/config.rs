@@ -269,7 +269,7 @@ pub struct ConfigRemoteHook {
 pub type ConfigLocalHook = ManifestHook;
 
 #[derive(Debug, Copy, Clone, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum MetaHookID {
     CheckHooksApply,
     CheckUselessExcludes,
