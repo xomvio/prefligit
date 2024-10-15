@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -20,10 +19,8 @@ use crate::store::Store;
 pub enum Error {
     #[error("Failed to parse URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
-    #[error("Failed to read config file: {0}")]
+    #[error(transparent)]
     ReadConfig(#[from] config::Error),
-    #[error("Failed to initialize repo: {0}")]
-    InitRepo(#[from] anyhow::Error),
     #[error("Hook not found: {hook} in repo {repo}")]
     HookNotFound { hook: String, repo: String },
 }
@@ -34,12 +31,12 @@ pub struct RemoteRepo {
     path: PathBuf,
     url: Url,
     rev: String,
-    hooks: HashMap<String, ManifestHook>,
+    hooks: Vec<ManifestHook>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LocalRepo {
-    hooks: HashMap<String, ConfigLocalHook>,
+    hooks: Vec<ManifestHook>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,17 +47,14 @@ pub enum Repo {
 }
 
 impl Repo {
-    pub fn remote(url: &str, rev: &str, path: &str) -> Result<Self> {
-        let url = Url::parse(&url).map_err(Error::InvalidUrl)?;
+    /// Load the remote repo manifest from the path.
+    pub fn remote(url: &str, rev: &str, path: &str) -> Result<Self, Error> {
+        let url = Url::parse(&url)?;
 
         let path = PathBuf::from(path);
         let path = path.join(MANIFEST_FILE);
         let manifest = read_manifest(&path)?;
-        let hooks = manifest
-            .hooks
-            .into_iter()
-            .map(|hook| (hook.id.clone(), hook))
-            .collect();
+        let hooks = manifest.hooks;
 
         Ok(Self::Remote(RemoteRepo {
             path,
@@ -70,12 +64,8 @@ impl Repo {
         }))
     }
 
+    /// Construct a local repo from a list of hooks.
     pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self> {
-        let hooks = hooks
-            .into_iter()
-            .map(|hook| (hook.id.clone(), hook))
-            .collect();
-
         Ok(Self::Local(LocalRepo { hooks }))
     }
 
@@ -83,12 +73,14 @@ impl Repo {
         todo!()
     }
 
+    /// Get a hook by id.
     pub fn get_hook(&self, id: &str) -> Option<&ManifestHook> {
-        match self {
-            Repo::Remote(repo) => repo.hooks.get(id),
-            Repo::Local(repo) => repo.hooks.get(id),
-            Repo::Meta => None,
-        }
+        let hooks = match self {
+            Repo::Remote(repo) => &repo.hooks,
+            Repo::Local(repo) => &repo.hooks,
+            Repo::Meta => return None,
+        };
+        hooks.iter().find(|hook| hook.id == id)
     }
 }
 
@@ -108,31 +100,27 @@ pub struct Project {
 }
 
 impl Project {
+    /// Load a project configuration from a directory.
     pub fn from_directory(root: PathBuf, config: Option<PathBuf>) -> Result<Self> {
         let config_path = config.unwrap_or_else(|| root.join(CONFIG_FILE));
-        let config = read_config(&config_path).map_err(Error::ReadConfig)?;
+        let config = read_config(&config_path)?;
         Ok(Self { root, config })
     }
 
+    /// Load project configuration from the current directory.
     pub fn current(config: Option<PathBuf>) -> Result<Self> {
         Self::from_directory(CWD.clone(), config)
     }
 
-    // pub fn repos(&self, store: &Store) -> Result<Vec<Repo>> {
-    //     // TODO: init in parallel
-    //     self.config
-    //         .repos
-    //         .iter()
-    //         .map(|repo| store.clone_repo(repo, None))
-    //         .collect::<Result<_>>()
-    // }
-
+    /// Load and prepare hooks for the project.
     pub async fn hooks(&self, store: &Store) -> Result<Vec<Hook>> {
         let mut hooks = Vec::new();
 
         // TODO: progress bar
         // Prepare remote repos.
         let mut tasks = FuturesUnordered::new();
+        let mut hook_tasks = FuturesUnordered::new();
+
         for repo_config in &self.config.repos {
             if let ConfigRepo::Remote(remote_repo @ ConfigRemoteRepo { .. }) = repo_config {
                 tasks.push(async {
@@ -143,8 +131,6 @@ impl Project {
                 });
             }
         }
-
-        let mut hook_tasks = FuturesUnordered::new();
 
         while let Some((repo_config, repo_path)) = tasks.next().await {
             let repo_path = repo_path?;
@@ -199,6 +185,7 @@ impl Project {
             let mut hook = hook_config.clone();
             hook.fill(&self.config);
 
+            // If the hook doesn't need an environment, don't do any preparation.
             if hook.language.need_env() {
                 let path = store
                     .prepare_local_repo(&hook, hook.additional_dependencies.clone())

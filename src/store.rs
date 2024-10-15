@@ -17,6 +17,14 @@ pub enum Error {
     HomeNotFound,
     #[error("Local hook {0} does not need env")]
     LocalHookNoNeedEnv(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    DB(#[from] rusqlite::Error),
+    #[error(transparent)]
+    Repo(#[from] crate::hook::Error),
+    #[error(transparent)]
+    Git(#[from] crate::git::Error),
 }
 
 pub struct Store {
@@ -25,7 +33,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn from_settings() -> Result<Self> {
+    pub fn from_settings() -> Result<Self, Error> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
             debug!(
                 "Loading store from PRE_COMMIT_HOME: {}",
@@ -55,7 +63,7 @@ impl Store {
     }
 
     /// Initialize the store.
-    pub fn init(self) -> Result<Self> {
+    pub fn init(self) -> Result<Self, Error> {
         fs_err::create_dir_all(&self.path)?;
 
         // Write a README file.
@@ -68,7 +76,7 @@ impl Store {
             Err(err) => return Err(err.into()),
         }
 
-        let _lock = self.lock()?;
+        let _lock = self.lock().map_err(Error::Io)?;
 
         // Init the database.
         let db = self.path.join("db.db");
@@ -97,7 +105,7 @@ impl Store {
     }
 
     /// List all repos.
-    pub fn repos(&self) -> Result<Vec<Repo>> {
+    pub fn repos(&self) -> Result<Vec<Repo>, Error> {
         let mut stmt = self
             .conn
             .as_ref()
@@ -116,8 +124,8 @@ impl Store {
         // TODO: fix, local repo can also in the store
         let repos = rows
             .into_iter()
-            .map(|(url, rev, path)| Repo::remote(&url, &rev, &path))
-            .collect::<Result<Vec<_>>>();
+            .map(|(url, rev, path)| Repo::remote(&url, &rev, &path).map_err(Error::Repo))
+            .collect::<Result<Vec<_>, Error>>();
 
         repos
     }
@@ -136,7 +144,7 @@ impl Store {
         repo: &str,
         rev: &str,
         deps: Option<&Vec<String>>,
-    ) -> Result<Option<(String, String, String)>> {
+    ) -> Result<Option<(String, String, String)>, Error> {
         let repo_name = Self::repo_name(repo, deps);
 
         let conn = self.conn.as_ref().unwrap();
@@ -155,7 +163,7 @@ impl Store {
         rev: &str,
         path: &str,
         deps: Option<Vec<String>>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let repo_name = Self::repo_name(repo, deps.as_ref());
 
         let mut stmt = self
@@ -174,7 +182,7 @@ impl Store {
         &self,
         hook: &ConfigLocalHook,
         deps: Option<Vec<String>>,
-    ) -> Result<PathBuf> {
+    ) -> Result<PathBuf, Error> {
         const LOCAL_NAME: &str = "local";
         const LOCAL_REV: &str = "1";
 
@@ -203,7 +211,7 @@ impl Store {
         &self,
         repo_config: &ConfigRemoteRepo,
         deps: Option<Vec<String>>,
-    ) -> Result<PathBuf> {
+    ) -> Result<PathBuf, Error> {
         if let Some((_, _, path)) = self.get_repo(
             repo_config.repo.as_str(),
             repo_config.rev.as_str(),
@@ -219,14 +227,20 @@ impl Store {
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
 
-        if deps.is_some() {
-            // Copy already cloned base remote repo
+        if let Some(ref deps) = deps {
+            // TODO: use hardlink?
+            // Optimization: This is an optimization from the Python pre-commit implementation.
+            // Copy already cloned base remote repo.
             let (_, _, base_repo_path) = self
                 .get_repo(repo_config.repo.as_str(), repo_config.rev.as_str(), None)?
                 .expect("base repo should be cloned before");
             debug!(
-                "Copying {}@{} from {} into {}",
-                repo_config.repo, repo_config.rev, base_repo_path, path
+                "Preparing {}@{} with dependencies {} by copying from {} into {}",
+                repo_config.repo,
+                repo_config.rev,
+                deps.join(","),
+                base_repo_path,
+                path
             );
             copy_dir_all(base_repo_path, &path)?;
         } else {
@@ -250,6 +264,10 @@ impl Store {
     /// Lock the store.
     pub fn lock(&self) -> Result<LockedFile, std::io::Error> {
         LockedFile::acquire_blocking(self.path.join(".lock"), "store")
+    }
+
+    pub async fn lock_async(&self) -> Result<LockedFile, std::io::Error> {
+        LockedFile::acquire(self.path.join(".lock"), "store").await
     }
 }
 

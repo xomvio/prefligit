@@ -7,6 +7,14 @@ use assert_cmd::output::{OutputError, OutputOkExt};
 use tokio::process::Command;
 use tracing::warn;
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    Command(#[from] OutputError),
+    #[error("Failed to find git: {0}")]
+    GitNotFound(#[from] which::Error),
+}
+
 static GIT: LazyLock<Result<PathBuf, which::Error>> = LazyLock::new(|| which::which("git"));
 
 static GIT_ENV: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
@@ -32,15 +40,15 @@ static GIT_ENV: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
         .collect()
 });
 
-fn git_cmd() -> Result<Command> {
-    let mut cmd = Command::new(GIT.deref().as_ref()?);
+fn git_cmd() -> Result<Command, Error> {
+    let mut cmd = Command::new(GIT.deref().clone()?);
     cmd.arg("-c").arg("core.useBuiltinFSMonitor=false");
     cmd.envs(GIT_ENV.iter().cloned());
 
     Ok(cmd)
 }
 
-pub async fn has_unmerged_paths(path: &Path) -> Result<bool> {
+pub async fn has_unmerged_paths(path: &Path) -> Result<bool, Error> {
     let output = git_cmd()?
         .arg("ls-files")
         .arg("--unmerged")
@@ -52,7 +60,7 @@ pub async fn has_unmerged_paths(path: &Path) -> Result<bool> {
     Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
-pub async fn is_dirty(path: &Path) -> Result<bool> {
+pub async fn is_dirty(path: &Path) -> Result<bool, Error> {
     let output = git_cmd()?
         .arg("diff")
         .arg("--quiet") // Implies `--exit-code`
@@ -77,13 +85,14 @@ pub async fn is_dirty(path: &Path) -> Result<bool> {
     }
 }
 
-async fn init_repo(url: &str, path: &Path) -> Result<()> {
+async fn init_repo(url: &str, path: &Path) -> Result<(), Error> {
     git_cmd()?
         .arg("init")
         .arg("--template=")
         .arg(path)
         .output()
-        .await?
+        .await
+        .map_err(OutputError::with_cause)?
         .ok()?;
 
     git_cmd()?
@@ -100,7 +109,7 @@ async fn init_repo(url: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
+async fn shallow_clone(rev: &str, path: &Path) -> Result<(), Error> {
     git_cmd()?
         .current_dir(path)
         .arg("-c")
@@ -140,7 +149,7 @@ async fn shallow_clone(rev: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn full_clone(rev: &str, path: &Path) -> Result<()> {
+async fn full_clone(rev: &str, path: &Path) -> Result<(), Error> {
     git_cmd()?
         .current_dir(path)
         .arg("fetch")
@@ -156,7 +165,8 @@ async fn full_clone(rev: &str, path: &Path) -> Result<()> {
         .arg("checkout")
         .arg(rev)
         .output()
-        .await?
+        .await
+        .map_err(OutputError::with_cause)?
         .ok()?;
 
     git_cmd()?
@@ -173,7 +183,7 @@ async fn full_clone(rev: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<()> {
+pub async fn clone_repo(url: &str, rev: &str, path: &Path) -> Result<(), Error> {
     init_repo(url, path).await?;
 
     if let Err(err) = shallow_clone(rev, path).await {

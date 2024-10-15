@@ -44,6 +44,7 @@ impl Language {
     pub fn need_env(&self) -> bool {
         match self {
             Self::Python => true,
+            Self::Node => true,
             Self::System => false,
             _ => false,
         }
@@ -172,6 +173,18 @@ impl Display for RepoLocation {
     }
 }
 
+fn deserialize_option_vec<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let v: Option<Vec<T>> = Option::deserialize(deserializer)?;
+    match v {
+        Some(v) if v.is_empty() => Ok(None),
+        _ => Ok(v),
+    }
+}
+
 /// A remote hook in the configuration file.
 ///
 /// All keys in manifest hook dict are valid in a config hook dict, but are optional.
@@ -185,10 +198,15 @@ pub struct ConfigRemoteHook {
     pub alias: Option<String>,
     pub files: Option<String>,
     pub exclude: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub types: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub types_or: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub exclude_types: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub additional_dependencies: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub args: Option<Vec<String>>,
     pub always_run: Option<bool>,
     pub fail_fast: Option<bool>,
@@ -197,6 +215,7 @@ pub struct ConfigRemoteHook {
     pub language_version: Option<String>,
     pub log_file: Option<String>,
     pub require_serial: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub stages: Option<Vec<Stage>>,
     pub verbose: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
@@ -274,6 +293,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
                 }
                 let RemoteRepo { rev, hooks } = RemoteRepo::deserialize(rest)
                     .map_err(|e| serde::de::Error::custom(format!("Invalid remote repo: {}", e)))?;
+
                 Ok(ConfigRepo::Remote(ConfigRemoteRepo {
                     repo: url,
                     rev,
@@ -320,10 +340,15 @@ pub struct ManifestHook {
     pub alias: Option<String>,
     pub files: Option<String>,
     pub exclude: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub types: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub types_or: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub exclude_types: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub additional_dependencies: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub args: Option<Vec<String>>,
     pub always_run: Option<bool>,
     pub fail_fast: Option<bool>,
@@ -332,6 +357,7 @@ pub struct ManifestHook {
     pub language_version: Option<String>,
     pub log_file: Option<String>,
     pub require_serial: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_option_vec")]
     pub stages: Option<Vec<Stage>>,
     pub verbose: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
@@ -436,6 +462,7 @@ pub enum Error {
     RepoUrl(#[from] url::ParseError),
 }
 
+/// Read the configuration file from the given path.
 pub fn read_config(path: &Path) -> Result<ConfigWire, Error> {
     let content = fs_err::read_to_string(path)?;
     let config =
@@ -443,6 +470,8 @@ pub fn read_config(path: &Path) -> Result<ConfigWire, Error> {
     Ok(config)
 }
 
+// TODO: check id duplication?
+/// Read the manifest file from the given path.
 pub fn read_manifest(path: &Path) -> Result<ManifestWire, Error> {
     let content = fs_err::read_to_string(path)?;
     let manifest =

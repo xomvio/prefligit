@@ -9,20 +9,19 @@ use crate::store::Store;
 
 pub(crate) async fn run(
     config: Option<PathBuf>,
-    hook: Option<String>,
+    hook_id: Option<String>,
     hook_stage: Option<Stage>,
 ) -> Result<ExitStatus> {
     let store = Store::from_settings()?.init()?;
     let project = Project::current(config)?;
 
-    let lock = store.lock();
+    let lock = store.lock_async().await?;
     let hooks = project.hooks(&store).await?;
-    drop(lock);
 
     let hooks: Vec<_> = hooks
         .into_iter()
         .filter(|h| {
-            if let Some(ref hook) = hook {
+            if let Some(ref hook) = hook_id {
                 &h.id == hook || h.alias.as_ref() == Some(hook)
             } else {
                 true
@@ -34,18 +33,21 @@ pub(crate) async fn run(
         })
         .collect();
 
-    if hooks.is_empty() && hook.is_some() {
+    if hooks.is_empty() && hook_id.is_some() {
         if let Some(hook_stage) = hook_stage {
             eprintln!(
-                "No hooks found for hook ID `{}` and stage `{:?}`",
-                hook.unwrap(),
+                "No hook found for id `{}` and stage `{:?}`",
+                hook_id.unwrap(),
                 hook_stage
             );
         } else {
-            eprintln!("No hooks found for hook ID: {}", hook.unwrap());
+            eprintln!("No hook found for id {}", hook_id.unwrap());
         }
         return Ok(ExitStatus::Failure);
     }
+
+    // store.install_hooks(&hooks).await?;
+    drop(lock);
 
     for hook in hooks {
         println!(
