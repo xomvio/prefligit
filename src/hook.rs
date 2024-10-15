@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use clap::ValueEnum;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use thiserror::Error;
@@ -300,8 +301,11 @@ impl Hook {
         self.config.pass_filenames.unwrap_or(true)
     }
 
-    pub fn stages(&self) -> Option<&Vec<Stage>> {
-        self.config.stages.as_ref()
+    pub fn stages(&self) -> &[Stage] {
+        self.config
+            .stages
+            .as_ref()
+            .map_or_else(|| Stage::value_variants(), |s| s.as_slice())
     }
 
     /// Get the environment directory that the hook will be installed to.

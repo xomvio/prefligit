@@ -16,6 +16,8 @@ pub(crate) async fn run(
     hook_stage: Option<Stage>,
     printer: Printer,
 ) -> Result<ExitStatus> {
+    // TODO: find git root
+
     let store = Store::from_settings()?.init()?;
     let project = Project::current(config)?;
 
@@ -33,9 +35,12 @@ pub(crate) async fn run(
                 true
             }
         })
-        .filter(|h| match (hook_stage, h.stages()) {
-            (Some(ref stage), Some(stages)) => stages.contains(stage),
-            (_, _) => true,
+        .filter(|h| {
+            if let Some(stage) = hook_stage {
+                h.stages().contains(&stage)
+            } else {
+                true
+            }
         })
         .collect();
 
