@@ -278,6 +278,10 @@ impl Hook {
         &self.config.name
     }
 
+    pub fn entry(&self) -> &str {
+        &self.config.entry
+    }
+
     pub fn alias(&self) -> Option<&str> {
         self.config.alias.as_deref()
     }
@@ -297,8 +301,51 @@ impl Hook {
             .map_or_else(|| vec!["file"], |t| t.iter().map(Deref::deref).collect())
     }
 
+    pub fn types_or(&self) -> Option<&Vec<String>> {
+        self.config.types.as_ref()
+    }
+
+    pub fn exclude_types(&self) -> Vec<&str> {
+        self.config
+            .exclude_types
+            .as_ref()
+            .map_or_else(Vec::new, |t| t.iter().map(Deref::deref).collect())
+    }
+
+    pub fn additional_dependencies(&self) -> Option<&Vec<String>> {
+        self.config.additional_dependencies.as_ref()
+    }
+
+    pub fn always_run(&self) -> bool {
+        self.config.always_run.unwrap_or(false)
+    }
+
+    pub fn fail_fast(&self) -> bool {
+        self.config.fail_fast.unwrap_or(false)
+    }
+
     pub fn pass_filenames(&self) -> bool {
         self.config.pass_filenames.unwrap_or(true)
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        self.config.description.as_deref()
+    }
+
+    pub fn log_file(&self) -> Option<&str> {
+        self.config.log_file.as_deref()
+    }
+
+    pub fn require_serial(&self) -> bool {
+        self.config.require_serial.unwrap_or(false)
+    }
+
+    pub fn verbose(&self) -> bool {
+        self.config.verbose.unwrap_or(false)
+    }
+
+    pub fn minimum_pre_commit_version(&self) -> Option<&str> {
+        self.config.minimum_pre_commit_version.as_deref()
     }
 
     pub fn stages(&self) -> &[Stage] {

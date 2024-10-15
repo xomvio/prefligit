@@ -48,7 +48,7 @@ pub(crate) async fn run(
         if let Some(hook_stage) = hook_stage {
             writeln!(
                 printer.stderr(),
-                "No hook found for id `{}` and stage `{:?}`",
+                "No hook found for id `{}` and stage `{}`",
                 hook_id.unwrap().cyan(),
                 hook_stage.cyan()
             )?;

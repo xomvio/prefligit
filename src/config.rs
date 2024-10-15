@@ -62,7 +62,7 @@ impl Display for Language {
             Self::Coursier => "coursier",
             Self::Dart => "dart",
             Self::Docker => "docker",
-            Self::DockerImage => "docker-image",
+            Self::DockerImage => "docker_image",
             Self::Dotnet => "dotnet",
             Self::Fail => "fail",
             Self::Golang => "golang",
@@ -84,7 +84,7 @@ impl Display for Language {
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum HookType {
     CommitMsg,
     PostCheckout,
@@ -99,9 +99,27 @@ pub enum HookType {
     PrepareCommitMsg,
 }
 
+impl Display for HookType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::CommitMsg => "commit-msg",
+            Self::PostCheckout => "post-checkout",
+            Self::PostCommit => "post-commit",
+            Self::PostMerge => "post-merge",
+            Self::PostRewrite => "post-rewrite",
+            Self::PreCommit => "pre-commit",
+            Self::PreMergeCommit => "pre-merge-commit",
+            Self::PrePush => "pre-push",
+            Self::PreRebase => "pre-rebase",
+            Self::PrepareCommitMsg => "prepare-commit-msg",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 // TODO: warn on deprecated stages
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum Stage {
     Manual,
     CommitMsg,
@@ -119,9 +137,29 @@ pub enum Stage {
     PrepareCommitMsg,
 }
 
+impl Display for Stage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Manual => "manual",
+            Self::CommitMsg => "commit-msg",
+            Self::PostCheckout => "post-checkout",
+            Self::PostCommit => "post-commit",
+            Self::PostMerge => "post-merge",
+            Self::PostRewrite => "post-rewrite",
+            Self::PreCommit => "pre-commit",
+            Self::PreMergeCommit => "pre-merge-commit",
+            Self::PrePush => "pre-push",
+            Self::PreRebase => "pre-rebase",
+            Self::PrepareCommitMsg => "prepare-commit-msg",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 // TODO: warn unexpected keys
 // TODO: warn deprecated stage
 // TODO: warn sensible regex
+// TODO: check minimum_pre_commit_version
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ConfigWire {
@@ -238,6 +276,17 @@ pub enum MetaHookID {
     Identify,
 }
 
+impl Display for MetaHookID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            MetaHookID::CheckHooksApply => "check-hooks-apply",
+            MetaHookID::CheckUselessExcludes => "check-useless-excludes",
+            MetaHookID::Identify => "identify",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
@@ -333,6 +382,8 @@ impl<'de> Deserialize<'de> for ConfigRepo {
         }
     }
 }
+
+// TODO: check minimum_pre_commit_version
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
