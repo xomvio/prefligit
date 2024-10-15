@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::process::ExitCode;
 use std::str::FromStr;
 
@@ -104,7 +105,7 @@ async fn run(cli: Cli) -> Result<ExitStatus> {
             .await
         }
         _ => {
-            eprintln!("Command not implemented yet");
+            writeln!(printer.stderr(), "Command not implemented yet")?;
             Ok(ExitStatus::Failure)
         }
     }

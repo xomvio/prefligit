@@ -66,7 +66,7 @@ pub(crate) async fn run(
         writeln!(
             printer.stdout(),
             "Running hook `{}` at `{}`",
-            hook.id().cyan(),
+            hook.to_string().cyan(),
             hook.path().to_string_lossy().dimmed()
         )?;
     }

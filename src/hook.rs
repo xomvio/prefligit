@@ -144,6 +144,7 @@ impl Project {
                 &repo_path.to_string_lossy(),
             )?;
 
+            // Prepare remote hooks.
             for hook_config in &repo_config.hooks {
                 // Check hook id is valid.
                 let Some(manifest_hook) = repo.get_hook(&hook_config.id) else {
@@ -158,22 +159,23 @@ impl Project {
                 hook.update(hook_config.clone());
                 hook.fill(&self.config);
 
+                // Prepare hooks with `additional_dependencies` (they need separate repos).
                 if let Some(deps) = hook.additional_dependencies.clone() {
                     let repo_config = repo_config.clone();
+                    let repo_source = repo.to_string();
                     hook_tasks.push(async move {
                         let path = store.prepare_remote_repo(&repo_config, Some(deps)).await;
-                        (hook, path)
+                        (repo_source, hook, path)
                     });
                 } else {
-                    hooks.push(Hook::new(hook, Some(repo_path.clone())));
+                    hooks.push(Hook::new(hook, repo.to_string(), Some(repo_path.clone())));
                 }
             }
         }
 
-        // Prepare hooks with `additional_dependencies` (they need separate repos).
-        while let Some((hook, repo_result)) = hook_tasks.next().await {
-            let path = repo_result.map_err(Box::new)?;
-            hooks.push(Hook::new(hook, Some(path)));
+        while let Some((source, hook, result)) = hook_tasks.next().await {
+            let path = result.map_err(Box::new)?;
+            hooks.push(Hook::new(hook, source, Some(path)));
         }
 
         // Prepare local hooks.
@@ -199,9 +201,9 @@ impl Project {
                     .prepare_local_repo(&hook, hook.additional_dependencies.clone())
                     .await
                     .map_err(Box::new)?;
-                hooks.push(Hook::new(hook, Some(path)));
+                hooks.push(Hook::new_local(hook, Some(path)));
             } else {
-                hooks.push(Hook::new(hook, None));
+                hooks.push(Hook::new_local(hook, None));
             }
         }
 
@@ -211,15 +213,48 @@ impl Project {
 
 #[derive(Debug)]
 pub struct Hook {
-    config: ManifestHook,
+    src: String,
     path: Option<PathBuf>,
+    config: ManifestHook,
+}
+
+impl Display for Hook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            if let Some(ref path) = self.path {
+                write!(
+                    f,
+                    "{} ({} at {})",
+                    self.config.id,
+                    self.src,
+                    path.to_string_lossy()
+                )
+            } else {
+                write!(f, "{} ({})", self.config.id, self.src)
+            }
+        } else {
+            write!(f, "{}", self.config.id)
+        }
+    }
 }
 
 impl Hook {
     /// Create a new hook with a configuration and an optional path.
     /// The path is `None` if the hook doesn't need a environment.
-    pub fn new(config: ManifestHook, path: Option<PathBuf>) -> Self {
-        Self { config, path }
+    pub fn new(config: ManifestHook, src: String, path: Option<PathBuf>) -> Self {
+        Self { src, config, path }
+    }
+
+    pub fn new_local(config: ManifestHook, path: Option<PathBuf>) -> Self {
+        Self {
+            src: "local".to_string(),
+            config,
+            path,
+        }
+    }
+
+    pub fn source(&self) -> &str {
+        &self.src
     }
 
     /// Get the working directory for the hook.
