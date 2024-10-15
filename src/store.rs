@@ -10,7 +10,6 @@ use crate::fs::{copy_dir_all, LockedFile};
 use crate::git::clone_repo;
 use crate::hook::Repo;
 
-// TODO: define errors
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Home directory not found")]

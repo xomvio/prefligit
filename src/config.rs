@@ -429,7 +429,6 @@ impl ManifestHook {
         }
 
         self.check();
-        self.fill_defaults();
     }
 
     fn check(&self) {
@@ -449,21 +448,6 @@ impl ManifestHook {
                     language
                 );
             }
-        }
-    }
-
-    fn fill_defaults(&mut self) {
-        if self.minimum_pre_commit_version.is_none() {
-            self.minimum_pre_commit_version = Some("0".to_string());
-        }
-        if self.types.is_none() {
-            self.types = Some(vec!["file".to_string()]);
-        }
-        if self.pass_filenames.is_none() {
-            self.pass_filenames = Some(true);
-        }
-        if self.language_version.is_none() {
-            self.language_version = Some("default".to_string());
         }
     }
 }

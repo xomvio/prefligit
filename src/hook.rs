@@ -296,6 +296,10 @@ impl Hook {
             .map_or_else(|| vec!["file"], |t| t.iter().map(Deref::deref).collect())
     }
 
+    pub fn pass_filenames(&self) -> bool {
+        self.config.pass_filenames.unwrap_or(true)
+    }
+
     pub fn stages(&self) -> Option<&Vec<Stage>> {
         self.config.stages.as_ref()
     }
