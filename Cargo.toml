@@ -43,6 +43,10 @@ regex = "1.11.0"
 [lints.rust]
 dead_code = "allow"
 
+[[bin]]
+path = "src/main.rs"
+name = "pre-commit"
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"
