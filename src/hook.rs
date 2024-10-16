@@ -9,10 +9,7 @@ use futures::StreamExt;
 use thiserror::Error;
 use url::Url;
 
-use crate::config::{
-    self, read_config, read_manifest, ConfigLocalHook, ConfigLocalRepo, ConfigRemoteRepo,
-    ConfigRepo, ConfigWire, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
-};
+use crate::config::{self, read_config, read_manifest, ConfigLocalHook, ConfigLocalRepo, ConfigRemoteRepo, ConfigRepo, ConfigWire, Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE};
 use crate::fs::CWD;
 use crate::store::Store;
 
@@ -156,8 +153,8 @@ impl Project {
                     .into());
                 };
 
-                let mut hook = manifest_hook.clone();
-                hook.update(hook_config.clone());
+                let mut hook = Hook::from_config(repo.to_string(), manifest_hook.clone());
+                hook.combine(hook_config.clone());
                 hook.fill(&self.config);
 
                 // Prepare hooks with `additional_dependencies` (they need separate repos).
@@ -169,14 +166,14 @@ impl Project {
                         (repo_source, hook, path)
                     });
                 } else {
-                    hooks.push(Hook::new(hook, repo.to_string(), Some(repo_path.clone())));
+                    hooks.push(Hook::new(repo.to_string(), hook, Some(repo_path.clone())));
                 }
             }
         }
 
         while let Some((source, hook, result)) = hook_tasks.next().await {
             let path = result.map_err(Box::new)?;
-            hooks.push(Hook::new(hook, source, Some(path)));
+            hooks.push(Hook::new(source, hook, Some(path)));
         }
 
         // Prepare local hooks.
@@ -216,7 +213,29 @@ impl Project {
 pub struct Hook {
     src: String,
     path: Option<PathBuf>,
-    config: ManifestHook,
+
+    pub id: String,
+    pub name: String,
+    pub entry: String,
+    pub language: Language,
+    pub alias: Option<String>,
+    pub files: Option<String>,
+    pub exclude: Option<String>,
+    pub types: Vec<String>,
+    pub types_or: Option<Vec<String>>,
+    pub exclude_types: Option<Vec<String>>,
+    pub additional_dependencies: Option<Vec<String>>,
+    pub args: Option<Vec<String>>,
+    pub always_run: bool,
+    pub fail_fast: bool,
+    pub pass_filenames: bool,
+    pub description: Option<String>,
+    pub language_version: String,
+    pub log_file: Option<String>,
+    pub require_serial: bool,
+    pub stages: Vec<Stage>,
+    pub verbose: bool,
+    pub minimum_pre_commit_version: Option<String>,
 }
 
 impl Display for Hook {
@@ -226,15 +245,15 @@ impl Display for Hook {
                 write!(
                     f,
                     "{} ({} at {})",
-                    self.config.id,
+                    self.id,
                     self.src,
                     path.to_string_lossy()
                 )
             } else {
-                write!(f, "{} ({})", self.config.id, self.src)
+                write!(f, "{} ({})", self.id, self.src)
             }
         } else {
-            write!(f, "{}", self.config.id)
+            write!(f, "{}", self.id)
         }
     }
 }
@@ -242,15 +261,23 @@ impl Display for Hook {
 impl Hook {
     /// Create a new hook with a configuration and an optional path.
     /// The path is `None` if the hook doesn't need a environment.
-    pub fn new(config: ManifestHook, src: String, path: Option<PathBuf>) -> Self {
-        Self { src, config, path }
+    pub fn from_config(src: String, config: ManifestHook) -> Self {
+
+        Self { src, path: None, config }
     }
 
-    pub fn new_local(config: ManifestHook, path: Option<PathBuf>) -> Self {
+    pub fn with_path(self, path: PathBuf) -> Self {
+        Self {
+            path: Some(path),
+            ..self
+        }
+    }
+
+    pub fn new_local(config: ManifestHook) -> Self {
         Self {
             src: "local".to_string(),
+            path: None,
             config,
-            path,
         }
     }
 
