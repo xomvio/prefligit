@@ -1,14 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::ops::Deref;
 use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize};
 use url::Url;
-
-use crate::warn_user;
 
 pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
@@ -36,36 +33,6 @@ pub enum Language {
     Pygrep,
     Script,
     System,
-}
-
-impl Deref for Language {
-    type Target = dyn crate::languages::Language;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            // Self::Conda => &crate::languages::Conda,
-            // Self::Coursier => &crate::languages::Coursier,
-            // Self::Dart => &crate::languages::Dart,
-            // Self::Docker => &crate::languages::Docker,
-            // Self::DockerImage => &crate::languages::DockerImage,
-            // Self::Dotnet => &crate::languages::Dotnet,
-            // Self::Fail => &crate::languages::Fail,
-            // Self::Golang => &crate::languages::Golang,
-            // Self::Haskell => &crate::languages::Haskell,
-            // Self::Lua => &crate::languages::Lua,
-            Self::Node => &crate::languages::Node,
-            // Self::Perl => &crate::languages::Perl,
-            Self::Python => &crate::languages::Python,
-            // Self::R => &crate::languages::R,
-            // Self::Ruby => &crate::languages::Ruby,
-            // Self::Rust => &crate::languages::Rust,
-            // Self::Swift => &crate::languages::Swift,
-            // Self::Pygrep => &crate::languages::Pygrep,
-            // Self::Script => &crate::languages::Script,
-            // Self::System => &crate::languages::System,
-            _ => unimplemented!(),
-        }
-    }
 }
 
 impl Display for Language {
@@ -430,92 +397,6 @@ pub struct ManifestHook {
     pub stages: Option<Vec<Stage>>,
     pub verbose: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
-}
-
-impl ManifestHook {
-    /// Update the hook from the project level hook configuration.
-    pub fn update(&mut self, repo_hook: ConfigRemoteHook) {
-        self.alias = repo_hook.alias;
-
-        if let Some(name) = repo_hook.name {
-            self.name = name;
-        }
-        if repo_hook.language_version.is_some() {
-            self.language_version = repo_hook.language_version;
-        }
-        if repo_hook.files.is_some() {
-            self.files = repo_hook.files;
-        }
-        if repo_hook.exclude.is_some() {
-            self.exclude = repo_hook.exclude;
-        }
-        if repo_hook.types.is_some() {
-            self.types = repo_hook.types;
-        }
-        if repo_hook.types_or.is_some() {
-            self.types_or = repo_hook.types_or;
-        }
-        if repo_hook.exclude_types.is_some() {
-            self.exclude_types = repo_hook.exclude_types;
-        }
-        if repo_hook.args.is_some() {
-            self.args = repo_hook.args;
-        }
-        if repo_hook.stages.is_some() {
-            self.stages = repo_hook.stages;
-        }
-        if repo_hook.additional_dependencies.is_some() {
-            self.additional_dependencies = repo_hook.additional_dependencies;
-        }
-        if repo_hook.always_run.is_some() {
-            self.always_run = repo_hook.always_run;
-        }
-        if repo_hook.verbose.is_some() {
-            self.verbose = repo_hook.verbose;
-        }
-        if repo_hook.log_file.is_some() {
-            self.log_file = repo_hook.log_file;
-        }
-    }
-
-    pub fn fill(&mut self, config: &ConfigWire) {
-        let language = self.language;
-        if self.language_version.is_none() {
-            self.language_version = config
-                .default_language_version
-                .as_ref()
-                .and_then(|v| v.get(&language).cloned())
-        }
-        if self.language_version.is_none() {
-            self.language_version = Some(language.default_version().to_string());
-        }
-
-        if self.stages.is_none() {
-            self.stages = config.default_stages.clone();
-        }
-
-        self.check();
-    }
-
-    fn check(&self) {
-        let language = self.language;
-        // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
-        if !language.need_install() {
-            if self.language_version.is_some() {
-                warn_user!(
-                    "Language {} does not need environment, but language_version is set",
-                    language
-                );
-            }
-
-            if self.additional_dependencies.is_some() {
-                warn_user!(
-                    "Language {} does not need environment, but additional_dependencies is set",
-                    language
-                );
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

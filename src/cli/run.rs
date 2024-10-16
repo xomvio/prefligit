@@ -30,14 +30,14 @@ pub(crate) async fn run(
         .into_iter()
         .filter(|h| {
             if let Some(ref hook) = hook_id {
-                &h.id() == hook || h.alias() == Some(hook)
+                &h.id == hook || h.alias.as_ref() == Some(hook)
             } else {
                 true
             }
         })
         .filter(|h| {
             if let Some(stage) = hook_stage {
-                h.stages().contains(&stage)
+                h.stages.contains(&stage)
             } else {
                 true
             }

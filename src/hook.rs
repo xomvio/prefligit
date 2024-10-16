@@ -9,9 +9,15 @@ use futures::StreamExt;
 use thiserror::Error;
 use url::Url;
 
-use crate::config::{self, read_config, read_manifest, ConfigLocalHook, ConfigLocalRepo, ConfigRemoteRepo, ConfigRepo, ConfigWire, Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE};
+use crate::config::{
+    self, read_config, read_manifest, ConfigLocalHook, ConfigLocalRepo, ConfigRemoteHook,
+    ConfigRemoteRepo, ConfigRepo, ConfigWire, Language, ManifestHook, Stage, CONFIG_FILE,
+    MANIFEST_FILE,
+};
 use crate::fs::CWD;
+use crate::languages::DEFAULT_VERSION;
 use crate::store::Store;
+use crate::warn_user;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -153,27 +159,28 @@ impl Project {
                     .into());
                 };
 
-                let mut hook = Hook::from_config(repo.to_string(), manifest_hook.clone());
-                hook.combine(hook_config.clone());
-                hook.fill(&self.config);
+                let mut builder = HookBuilder::new(repo.to_string(), manifest_hook.clone());
+                builder.update(hook_config);
+                builder.combine(&self.config);
+                let hook = builder.build();
 
                 // Prepare hooks with `additional_dependencies` (they need separate repos).
                 if let Some(deps) = hook.additional_dependencies.clone() {
                     let repo_config = repo_config.clone();
-                    let repo_source = repo.to_string();
+
                     hook_tasks.push(async move {
-                        let path = store.prepare_remote_repo(&repo_config, Some(deps)).await;
-                        (repo_source, hook, path)
+                        let path = store.prepare_remote_repo(&repo_config, Some(deps)).await?;
+                        Ok::<Hook, crate::store::Error>(hook.with_path(path))
                     });
                 } else {
-                    hooks.push(Hook::new(repo.to_string(), hook, Some(repo_path.clone())));
+                    hooks.push(hook.with_path(repo_path.clone()));
                 }
             }
         }
 
-        while let Some((source, hook, result)) = hook_tasks.next().await {
-            let path = result.map_err(Box::new)?;
-            hooks.push(Hook::new(source, hook, Some(path)));
+        while let Some(result) = hook_tasks.next().await {
+            let hook = result.map_err(Box::new)?;
+            hooks.push(hook);
         }
 
         // Prepare local hooks.
@@ -190,8 +197,7 @@ impl Project {
             })
             .flatten();
         for hook_config in local_hooks {
-            let mut hook = hook_config.clone();
-            hook.fill(&self.config);
+            let hook = hook_config.clone();
 
             // If the hook doesn't need an environment, don't do any preparation.
             if hook.language.need_install() {
@@ -206,6 +212,153 @@ impl Project {
         }
 
         Ok(hooks)
+    }
+}
+
+pub struct HookBuilder {
+    src: String,
+    config: ManifestHook,
+}
+
+impl HookBuilder {
+    pub fn new(src: String, config: ManifestHook) -> Self {
+        Self { src, config }
+    }
+
+    /// Update the hook from the project level hook configuration.
+    pub fn update(&mut self, config: &ConfigRemoteHook) -> &mut Self {
+        macro_rules! update_if_some {
+            ($($field:ident),* $(,)?) => {
+                $(
+                if config.$field.is_some() {
+                    self.config.$field = config.$field.clone();
+                }
+                )*
+            };
+        }
+        update_if_some!(
+            alias,
+            files,
+            exclude,
+            types,
+            types_or,
+            exclude_types,
+            additional_dependencies,
+            args,
+            always_run,
+            fail_fast,
+            pass_filenames,
+            description,
+            language_version,
+            log_file,
+            require_serial,
+            stages,
+            verbose,
+            minimum_pre_commit_version,
+        );
+
+        if let Some(name) = &config.name {
+            self.config.name = name.clone();
+        }
+        if let Some(entry) = &config.entry {
+            self.config.entry = entry.clone();
+        }
+        if let Some(language) = &config.language {
+            self.config.language = language.clone();
+        }
+
+        self
+    }
+
+    /// Combine the hook configuration with the project level hook configuration.
+    pub fn combine(&mut self, config: &ConfigWire) {
+        let language = self.config.language;
+        if self.config.language_version.is_none() {
+            self.config.language_version = config
+                .default_language_version
+                .as_ref()
+                .and_then(|v| v.get(&language).cloned())
+        }
+        if self.config.language_version.is_none() {
+            self.config.language_version = Some(language.default_version().to_string());
+        }
+
+        if self.config.stages.is_none() {
+            self.config.stages = config.default_stages.clone();
+        }
+    }
+
+    /// Fill in the default values for the hook configuration.
+    fn fill_in_defaults(&mut self) {
+        self.config
+            .language_version
+            .get_or_insert(DEFAULT_VERSION.to_string());
+        self.config.types.get_or_insert(vec!["file".to_string()]);
+        self.config.always_run.get_or_insert(false);
+        self.config.fail_fast.get_or_insert(false);
+        self.config.pass_filenames.get_or_insert(true);
+        self.config.require_serial.get_or_insert(false);
+        self.config.verbose.get_or_insert(false);
+        self.config
+            .stages
+            .get_or_insert(Stage::value_variants().to_vec());
+    }
+
+    /// Check the hook configuration.
+    fn check(&self) {
+        let language = self.config.language;
+        // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
+        if !language.need_install() {
+            if self.config.language_version.is_some() {
+                warn_user!(
+                    "Language {} does not need environment, but language_version is set",
+                    language
+                );
+            }
+
+            if self.config.additional_dependencies.is_some() {
+                warn_user!(
+                    "Language {} does not need environment, but additional_dependencies is set",
+                    language
+                );
+            }
+        }
+    }
+
+    /// Build the hook.
+    pub fn build(mut self) -> Hook {
+        self.check();
+        self.fill_in_defaults();
+
+        Hook {
+            src: self.src,
+            path: None,
+            id: self.config.id,
+            name: self.config.name,
+            entry: self.config.entry,
+            language: self.config.language,
+            alias: self.config.alias,
+            files: self.config.files,
+            exclude: self.config.exclude,
+            types: self.config.types.expect("types not set"),
+            types_or: self.config.types_or,
+            exclude_types: self.config.exclude_types,
+            additional_dependencies: self.config.additional_dependencies,
+            args: self.config.args,
+            always_run: self.config.always_run.expect("always_run not set"),
+            fail_fast: self.config.fail_fast.expect("fail_fast not set"),
+            pass_filenames: self.config.pass_filenames.expect("pass_filenames not set"),
+            description: self.config.description,
+            language_version: self
+                .config
+                .language_version
+                .expect("language_version not set"),
+            log_file: self.config.log_file,
+            require_serial: self.config.require_serial.expect("require_serial not set"),
+            stages: self.config.stages.expect("stages not set"),
+            verbose: self.config.verbose.expect("verbose not set"),
+            minimum_pre_commit_version: self.config.minimum_pre_commit_version,
+        }
     }
 }
 
@@ -259,26 +412,17 @@ impl Display for Hook {
 }
 
 impl Hook {
-    /// Create a new hook with a configuration and an optional path.
-    /// The path is `None` if the hook doesn't need a environment.
-    pub fn from_config(src: String, config: ManifestHook) -> Self {
-
-        Self { src, path: None, config }
+    /// Create a local hook.
+    pub fn new_local(config: ManifestHook, path: Option<PathBuf>) -> Self {
+        let builder = HookBuilder::new("local".to_string(), config);
+        let mut hook = builder.build();
+        hook.path = path;
+        hook
     }
 
-    pub fn with_path(self, path: PathBuf) -> Self {
-        Self {
-            path: Some(path),
-            ..self
-        }
-    }
-
-    pub fn new_local(config: ManifestHook) -> Self {
-        Self {
-            src: "local".to_string(),
-            path: None,
-            config,
-        }
+    pub fn with_path(mut self, path: PathBuf) -> Self {
+        self.path = Some(path);
+        self
     }
 
     pub fn source(&self) -> &str {
@@ -287,116 +431,22 @@ impl Hook {
 
     /// Get the working directory for the hook.
     pub fn path(&self) -> &Path {
-        self.path.as_ref().unwrap_or(&CWD)
-    }
-
-    pub fn language_version(&self) -> &str {
-        self.config
-            .language_version
-            .as_ref()
-            .map_or("default", Deref::deref)
-    }
-
-    pub fn id(&self) -> &str {
-        &self.config.id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.config.name
-    }
-
-    pub fn entry(&self) -> &str {
-        &self.config.entry
-    }
-
-    pub fn alias(&self) -> Option<&str> {
-        self.config.alias.as_deref()
-    }
-
-    pub fn files(&self) -> &str {
-        self.config.files.as_ref().map_or("", Deref::deref)
-    }
-
-    pub fn exclude(&self) -> &str {
-        self.config.exclude.as_ref().map_or("^$", Deref::deref)
-    }
-
-    pub fn types(&self) -> Vec<&str> {
-        self.config
-            .types
-            .as_ref()
-            .map_or_else(|| vec!["file"], |t| t.iter().map(Deref::deref).collect())
-    }
-
-    pub fn types_or(&self) -> Option<&Vec<String>> {
-        self.config.types.as_ref()
-    }
-
-    pub fn exclude_types(&self) -> Vec<&str> {
-        self.config
-            .exclude_types
-            .as_ref()
-            .map_or_else(Vec::new, |t| t.iter().map(Deref::deref).collect())
-    }
-
-    pub fn additional_dependencies(&self) -> Option<&Vec<String>> {
-        self.config.additional_dependencies.as_ref()
-    }
-
-    pub fn always_run(&self) -> bool {
-        self.config.always_run.unwrap_or(false)
-    }
-
-    pub fn fail_fast(&self) -> bool {
-        self.config.fail_fast.unwrap_or(false)
-    }
-
-    pub fn pass_filenames(&self) -> bool {
-        self.config.pass_filenames.unwrap_or(true)
-    }
-
-    pub fn description(&self) -> Option<&str> {
-        self.config.description.as_deref()
-    }
-
-    pub fn log_file(&self) -> Option<&str> {
-        self.config.log_file.as_deref()
-    }
-
-    pub fn require_serial(&self) -> bool {
-        self.config.require_serial.unwrap_or(false)
-    }
-
-    pub fn verbose(&self) -> bool {
-        self.config.verbose.unwrap_or(false)
-    }
-
-    pub fn minimum_pre_commit_version(&self) -> Option<&str> {
-        self.config.minimum_pre_commit_version.as_deref()
-    }
-
-    pub fn stages(&self) -> &[Stage] {
-        self.config
-            .stages
-            .as_ref()
-            .map_or_else(|| Stage::value_variants(), |s| s.as_slice())
+        self.path.as_ref().unwrap_or_else(|| CWD.deref())
     }
 
     /// Get the environment directory that the hook will be installed to.
     fn environment_dir(&self) -> PathBuf {
-        let lang = self.config.language;
+        let lang = self.language;
         self.path()
-            // TODO
             .join(lang.environment_dir())
-            .join(self.language_version())
+            .join(&self.language_version)
     }
 
     /// Check if the hook is installed.
     pub fn installed(&self) -> bool {
-        if self.path.is_none() {
+        if !self.language.need_install() {
             return true;
-        };
-
+        }
         // let lang = self.config.language;
         false
     }
