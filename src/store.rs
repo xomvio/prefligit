@@ -188,7 +188,7 @@ impl Store {
         const LOCAL_NAME: &str = "local";
         const LOCAL_REV: &str = "1";
 
-        if !hook.language.need_environment() {
+        if !hook.language.need_install() {
             return Err(Error::LocalHookNoNeedEnv(hook.id.clone()).into());
         }
 

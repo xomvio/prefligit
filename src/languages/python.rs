@@ -7,15 +7,11 @@ impl Language for Python {
         "Python"
     }
 
-    fn default_version(&self) -> &str {
-        todo!()
-    }
-
     fn need_install(&self) -> bool {
         todo!()
     }
 
-    fn env_dir(&self) -> &str {
+    fn environment_dir(&self) -> &str {
         "py-env"
     }
 

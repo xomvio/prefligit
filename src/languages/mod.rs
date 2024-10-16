@@ -1,15 +1,19 @@
+mod node;
 mod python;
 
 use anyhow::Result;
 
 use crate::config;
-use crate::languages::python::Python;
+pub use crate::languages::node::Node;
+pub use crate::languages::python::Python;
 
 pub trait Language {
     fn name(&self) -> &str;
-    fn default_version(&self) -> &str;
+    fn default_version(&self) -> &str {
+        "default"
+    }
     fn need_install(&self) -> bool;
-    fn env_dir(&self) -> &str;
+    fn environment_dir(&self) -> &str;
     fn install(&self) -> Result<()>;
     fn run(&self) -> Result<()>;
 }

@@ -197,7 +197,7 @@ impl Project {
             hook.fill(&self.config);
 
             // If the hook doesn't need an environment, don't do any preparation.
-            if hook.language.need_environment() {
+            if hook.language.need_install() {
                 let path = store
                     .prepare_local_repo(&hook, hook.additional_dependencies.clone())
                     .await
@@ -360,7 +360,7 @@ impl Hook {
         let lang = self.config.language;
         self.path()
             // TODO
-            .join(lang.environment_dir().unwrap())
+            .join(lang.environment_dir())
             .join(self.language_version())
     }
 

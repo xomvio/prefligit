@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::ops::Deref;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -37,20 +38,32 @@ pub enum Language {
     System,
 }
 
-impl Language {
-    pub fn default_version(&self) -> Option<String> {
-        None
-    }
+impl Deref for Language {
+    type Target = dyn crate::languages::Language;
 
-    pub fn need_environment(&self) -> bool {
-        self.environment_dir().is_some()
-    }
-
-    pub fn environment_dir(&self) -> Option<String> {
+    fn deref(&self) -> &Self::Target {
         match self {
-            Self::Python => Some("py_env".to_string()),
-            Self::Node => Some("node_env".to_string()),
-            _ => None,
+            // Self::Conda => &crate::languages::Conda,
+            // Self::Coursier => &crate::languages::Coursier,
+            // Self::Dart => &crate::languages::Dart,
+            // Self::Docker => &crate::languages::Docker,
+            // Self::DockerImage => &crate::languages::DockerImage,
+            // Self::Dotnet => &crate::languages::Dotnet,
+            // Self::Fail => &crate::languages::Fail,
+            // Self::Golang => &crate::languages::Golang,
+            // Self::Haskell => &crate::languages::Haskell,
+            // Self::Lua => &crate::languages::Lua,
+            Self::Node => &crate::languages::Node,
+            // Self::Perl => &crate::languages::Perl,
+            Self::Python => &crate::languages::Python,
+            // Self::R => &crate::languages::R,
+            // Self::Ruby => &crate::languages::Ruby,
+            // Self::Rust => &crate::languages::Rust,
+            // Self::Swift => &crate::languages::Swift,
+            // Self::Pygrep => &crate::languages::Pygrep,
+            // Self::Script => &crate::languages::Script,
+            // Self::System => &crate::languages::System,
+            _ => unimplemented!(),
         }
     }
 }
@@ -474,7 +487,7 @@ impl ManifestHook {
                 .and_then(|v| v.get(&language).cloned())
         }
         if self.language_version.is_none() {
-            self.language_version = language.default_version();
+            self.language_version = Some(language.default_version().to_string());
         }
 
         if self.stages.is_none() {
@@ -487,7 +500,7 @@ impl ManifestHook {
     fn check(&self) {
         let language = self.language;
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
-        if !language.need_environment() {
+        if !language.need_install() {
             if self.language_version.is_some() {
                 warn_user!(
                     "Language {} does not need environment, but language_version is set",
