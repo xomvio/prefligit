@@ -8,7 +8,7 @@ impl Language for Python {
     }
 
     fn need_install(&self) -> bool {
-        todo!()
+        true
     }
 
     fn environment_dir(&self) -> &str {

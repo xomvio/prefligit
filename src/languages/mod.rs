@@ -1,5 +1,6 @@
 mod node;
 mod python;
+mod system;
 
 use std::ops::Deref;
 
@@ -44,7 +45,7 @@ impl Deref for config::Language {
             // Self::Swift => &crate::languages::Swift,
             // Self::Pygrep => &crate::languages::Pygrep,
             // Self::Script => &crate::languages::Script,
-            // Self::System => &crate::languages::System,
+            Self::System => &system::System,
             _ => unimplemented!(),
         }
     }
