@@ -296,6 +296,7 @@ impl HookBuilder {
         self.config
             .language_version
             .get_or_insert(DEFAULT_VERSION.to_string());
+        self.config.alias.get_or_insert("".to_string());
         self.config.args.get_or_insert(Vec::new());
         self.config.types.get_or_insert(vec!["file".to_string()]);
         self.config.types_or.get_or_insert(Vec::new());
@@ -346,7 +347,7 @@ impl HookBuilder {
             name: self.config.name,
             entry: self.config.entry,
             language: self.config.language,
-            alias: self.config.alias,
+            alias: self.config.alias.expect("alias not set"),
             files: self.config.files,
             exclude: self.config.exclude,
             types: self.config.types.expect("types not set"),
@@ -374,7 +375,7 @@ impl HookBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Hook {
     src: String,
     path: Option<PathBuf>,
@@ -383,7 +384,7 @@ pub struct Hook {
     pub name: String,
     pub entry: String,
     pub language: Language,
-    pub alias: Option<String>,
+    pub alias: String,
     pub files: Option<String>,
     pub exclude: Option<String>,
     pub types: Vec<String>,
@@ -577,12 +578,17 @@ async fn run_hook(hook: &Hook, filenames: Vec<String>, printer: Printer) -> Resu
     Ok(())
 }
 
-pub async fn run_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
+pub async fn run_hooks(hooks: &[Hook], skips: &[String], printer: Printer) -> Result<()> {
     // TODO: collect files
     // TODO: classify files
 
     // hooks must run in serial
     for hook in hooks {
+        if skips.contains(&hook.id) || skips.contains(&hook.alias) {
+            writeln!(printer.stdout(), "Skipping hook `{}`", hook)?;
+            continue;
+        }
+
         // TODO: handle single hook result
         run_hook(hook, vec![], printer).await?
     }
