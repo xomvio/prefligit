@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::fmt::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +9,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::Itertools;
 use thiserror::Error;
-use tracing::error;
+use tracing::{debug, error};
 use url::Url;
 
 use crate::config::{
@@ -32,6 +33,8 @@ pub enum Error {
     HookNotFound { hook: String, repo: String },
     #[error(transparent)]
     Store(#[from] Box<crate::store::Error>),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -162,8 +165,9 @@ impl Project {
                 let hook = builder.build();
 
                 // Prepare hooks with `additional_dependencies` (they need separate repos).
-                if let Some(deps) = hook.additional_dependencies.clone() {
+                if !hook.additional_dependencies.is_empty() {
                     let repo_config = repo_config.clone();
+                    let deps = hook.additional_dependencies.clone();
 
                     hook_tasks.push(async move {
                         let path = store
@@ -301,6 +305,9 @@ impl HookBuilder {
         self.config
             .stages
             .get_or_insert(Stage::value_variants().to_vec());
+        self.config
+            .additional_dependencies
+            .get_or_insert(Vec::new());
     }
 
     /// Check the hook configuration.
@@ -342,7 +349,10 @@ impl HookBuilder {
             types: self.config.types.expect("types not set"),
             types_or: self.config.types_or,
             exclude_types: self.config.exclude_types,
-            additional_dependencies: self.config.additional_dependencies,
+            additional_dependencies: self
+                .config
+                .additional_dependencies
+                .expect("additional_dependencies should not be None"),
             args: self.config.args,
             always_run: self.config.always_run.expect("always_run not set"),
             fail_fast: self.config.fail_fast.expect("fail_fast not set"),
@@ -376,7 +386,7 @@ pub struct Hook {
     pub types: Vec<String>,
     pub types_or: Option<Vec<String>>,
     pub exclude_types: Option<Vec<String>>,
-    pub additional_dependencies: Option<Vec<String>>,
+    pub additional_dependencies: Vec<String>,
     pub args: Option<Vec<String>>,
     pub always_run: bool,
     pub fail_fast: bool,
@@ -439,17 +449,23 @@ impl Hook {
         let Some(env_dir) = lang.environment_dir() else {
             return None;
         };
-        Some(self.path().join(env_dir).join(&self.language_version))
-    }
-
-    pub fn install_key(&self) -> (String, String, String) {
-        (
-            self.path().display().to_string(),
-            self.language.to_string(),
-            self.language_version.clone(),
+        Some(
+            self.path()
+                .join(format!("{}-{}", env_dir, &self.language_version)),
         )
     }
 
+    pub fn install_key(&self) -> String {
+        format!(
+            "{}-{}-{}-{}",
+            self.src,
+            self.language.to_string(),
+            self.language_version,
+            self.additional_dependencies.join(",")
+        )
+    }
+
+    // TODO: health check
     /// Check if the hook is installed.
     pub fn installed(&self) -> bool {
         let Some(env) = self.environment_dir() else {
@@ -485,20 +501,43 @@ impl Hook {
             }
         };
 
-        state_v1.additional_dependencies
-            == *self.additional_dependencies.as_ref().unwrap_or(&Vec::new())
+        state_v1.additional_dependencies == self.additional_dependencies
+    }
+
+    pub fn mark_installed(&self) -> Result<(), Error> {
+        let env = self.environment_dir().unwrap();
+        let state_file_v2 = env.join(".install_state_v2");
+        fs_err::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(&state_file_v2)?;
+        Ok(())
     }
 }
 
-async fn install_hook(hook: &Hook, _env_dir: PathBuf) -> Result<()> {
-    let lang = hook.language;
-    if lang.environment_dir().is_some() {
-        lang.install(hook).await?;
+async fn install_hook(hook: &Hook, env_dir: PathBuf, printer: Printer) -> Result<()> {
+    writeln!(
+        printer.stdout(),
+        "Installing environment for {}",
+        hook.source()
+    )?;
+
+    if env_dir.try_exists()? {
+        debug!(
+            "Removing existing environment directory {}",
+            env_dir.display()
+        );
+        fs_err::remove_dir_all(&env_dir)?;
     }
+
+    hook.language.install(hook).await?;
+    hook.mark_installed()?;
+
     Ok(())
 }
 
-pub async fn install_hooks(hooks: &[Hook], _printer: Printer) -> Result<()> {
+// TODO: progress bar
+pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     let to_install = hooks
         .iter()
         .filter(|&hook| !hook.installed())
@@ -507,7 +546,7 @@ pub async fn install_hooks(hooks: &[Hook], _printer: Printer) -> Result<()> {
     let mut tasks = FuturesUnordered::new();
     for hook in to_install {
         if let Some(env_dir) = hook.environment_dir() {
-            tasks.push(async move { install_hook(hook, env_dir).await });
+            tasks.push(async move { install_hook(hook, env_dir, printer).await });
         }
     }
     while let Some(result) = tasks.next().await {
