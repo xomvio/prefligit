@@ -296,7 +296,10 @@ impl HookBuilder {
         self.config
             .language_version
             .get_or_insert(DEFAULT_VERSION.to_string());
+        self.config.args.get_or_insert(Vec::new());
         self.config.types.get_or_insert(vec!["file".to_string()]);
+        self.config.types_or.get_or_insert(Vec::new());
+        self.config.exclude_types.get_or_insert(Vec::new());
         self.config.always_run.get_or_insert(false);
         self.config.fail_fast.get_or_insert(false);
         self.config.pass_filenames.get_or_insert(true);
@@ -347,13 +350,13 @@ impl HookBuilder {
             files: self.config.files,
             exclude: self.config.exclude,
             types: self.config.types.expect("types not set"),
-            types_or: self.config.types_or,
-            exclude_types: self.config.exclude_types,
+            types_or: self.config.types_or.expect("types_or not set"),
+            exclude_types: self.config.exclude_types.expect("exclude_types not set"),
             additional_dependencies: self
                 .config
                 .additional_dependencies
                 .expect("additional_dependencies should not be None"),
-            args: self.config.args,
+            args: self.config.args.expect("args not set"),
             always_run: self.config.always_run.expect("always_run not set"),
             fail_fast: self.config.fail_fast.expect("fail_fast not set"),
             pass_filenames: self.config.pass_filenames.expect("pass_filenames not set"),
@@ -384,10 +387,10 @@ pub struct Hook {
     pub files: Option<String>,
     pub exclude: Option<String>,
     pub types: Vec<String>,
-    pub types_or: Option<Vec<String>>,
-    pub exclude_types: Option<Vec<String>>,
+    pub types_or: Vec<String>,
+    pub exclude_types: Vec<String>,
     pub additional_dependencies: Vec<String>,
-    pub args: Option<Vec<String>>,
+    pub args: Vec<String>,
     pub always_run: bool,
     pub fail_fast: bool,
     pub pass_filenames: bool,
@@ -564,7 +567,7 @@ async fn run_hook(hook: &Hook, filenames: Vec<String>, printer: Printer) -> Resu
     writeln!(printer.stdout(), "Running hook {}", hook)?;
     let start = std::time::Instant::now();
     hook.language.run(hook, filenames).await?;
-    writeln!(printer.stdout(), "Hook completed in {:?}", start.elapsed())?;
+    writeln!(printer.stdout(), "{} completed in {:?}", hook, start.elapsed())?;
 
     Ok(())
 }

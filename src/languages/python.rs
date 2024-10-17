@@ -69,8 +69,8 @@ impl Python {
         let cmds = shlex::split(&hook.entry).ok_or(anyhow::anyhow!("Failed to parse entry"))?;
         Command::new(&cmds[0])
             .args(&cmds[1..])
+            .args(&hook.args)
             .args(filenames)
-            .current_dir(hook.path())
             .env("VIRTUAL_ENV", &env)
             .env("PATH", new_path)
             .env_remove("PYTHONHOME")
