@@ -567,7 +567,12 @@ async fn run_hook(hook: &Hook, filenames: Vec<String>, printer: Printer) -> Resu
     writeln!(printer.stdout(), "Running hook {}", hook)?;
     let start = std::time::Instant::now();
     hook.language.run(hook, filenames).await?;
-    writeln!(printer.stdout(), "{} completed in {:?}", hook, start.elapsed())?;
+    writeln!(
+        printer.stdout(),
+        "{} completed in {:?}",
+        hook,
+        start.elapsed()
+    )?;
 
     Ok(())
 }

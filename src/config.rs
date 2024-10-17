@@ -157,11 +157,20 @@ impl Stage {
 #[serde(rename_all = "snake_case")]
 pub struct ConfigWire {
     pub repos: Vec<ConfigRepo>,
+    /// A list of --hook-types which will be used by default when running pre-commit install.
+    /// Default is `[pre-commit]`.
     pub default_install_hook_types: Option<Vec<HookType>>,
+    /// A mapping from language to the default language_version.
     pub default_language_version: Option<HashMap<Language, String>>,
+    /// A configuration-wide default for the stages property of hooks.
+    /// Default to all stages.
     pub default_stages: Option<Vec<Stage>>,
+    /// Global file include pattern.
     pub files: Option<String>,
+    /// Global file exclude pattern.
     pub exclude: Option<String>,
+    /// Set to true to have pre-commit stop running hooks after the first failure.
+    /// Default is false.
     pub fail_fast: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
     /// Configuration for pre-commit.ci service.
@@ -208,50 +217,62 @@ impl Display for RepoLocation {
     }
 }
 
-fn deserialize_option_vec<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    let v: Option<Vec<T>> = Option::deserialize(deserializer)?;
-    match v {
-        Some(v) if v.is_empty() => Ok(None),
-        _ => Ok(v),
-    }
-}
-
 /// A remote hook in the configuration file.
 ///
 /// All keys in manifest hook dict are valid in a config hook dict, but are optional.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ConfigRemoteHook {
+    /// The id of the hook.
     pub id: String,
+    /// Override the name of the hook.
     pub name: Option<String>,
+    /// Not documented in the official docs.
     pub entry: Option<String>,
+    /// Not documented in the official docs.
     pub language: Option<Language>,
+    /// Allows the hook to be referenced using an additional id when using pre-commit run <hookid>
     pub alias: Option<String>,
+    /// Override the pattern of files to run on.
     pub files: Option<String>,
+    /// Override the pattern of files to exclude.
     pub exclude: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Override the types of files to run on (AND).
     pub types: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Override the types of files to run on (OR).
     pub types_or: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Override the types of files to exclude.
     pub exclude_types: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Additional dependencies to install in the environment where the hook runs.
     pub additional_dependencies: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Additional arguments to pass to the hook.
     pub args: Option<Vec<String>>,
+    /// This hook will run even if there are no matching files.
+    /// Default is false.
     pub always_run: Option<bool>,
+    /// If this hook fails, don't run any more hooks.
+    /// Default is false.
     pub fail_fast: Option<bool>,
+    /// Append filenames that would be checked to the hook entry as arguments.
+    /// Default is true.
     pub pass_filenames: Option<bool>,
+    /// A description of the hook. For metadata only.
     pub description: Option<String>,
+    /// Run the hook on a specific version of the language.
+    /// Default is `default`.
+    /// See https://pre-commit.com/#overriding-language-version.
     pub language_version: Option<String>,
+    /// Write the output of the hook to a file when the hook fails or verbose is enabled.
     pub log_file: Option<String>,
+    /// This hook will execute using a single process instead of in parallel.
+    /// Default is false.
     pub require_serial: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Select which git hook(s) to run for.
+    /// Default all stages are selected.
+    /// See https://pre-commit.com/#confining-hooks-to-run-at-certain-stages.
     pub stages: Option<Vec<Stage>>,
+    /// Print the output of the hook even if it passes.
+    /// Default is false.
     pub verbose: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
 }
@@ -381,33 +402,60 @@ impl<'de> Deserialize<'de> for ConfigRepo {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ManifestHook {
+    /// The id of the hook.
     pub id: String,
+    /// The name of the hook.
     pub name: String,
+    /// The command to run. It can contain arguments that will not be overridden.
     pub entry: String,
+    /// The language of the hook. Tells pre-commit how to install and run the hook.
     pub language: Language,
+    /// Not documented in the official docs.
     pub alias: Option<String>,
-    /// the pattern of files to run on
+    /// The pattern of files to run on.
     pub files: Option<String>,
+    /// Exclude files that were matched by `files`.
+    /// Default is `$^`, which matches nothing.
     pub exclude: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// List of file types to run on (AND).
+    /// Default is `[file]`, which matches all files.
     pub types: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// List of file types to run on (OR).
+    /// Default is `[]`.
     pub types_or: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// List of file types to exclude.
+    /// Default is `[]`.
     pub exclude_types: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Not documented in the official docs.
     pub additional_dependencies: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Additional arguments to pass to the hook.
     pub args: Option<Vec<String>>,
+    /// This hook will run even if there are no matching files.
+    /// Default is false.
     pub always_run: Option<bool>,
+    /// If this hook fails, don't run any more hooks.
+    /// Default is false.
     pub fail_fast: Option<bool>,
+    /// Append filenames that would be checked to the hook entry as arguments.
+    /// Default is true.
     pub pass_filenames: Option<bool>,
+    /// A description of the hook. For metadata only.
     pub description: Option<String>,
+    /// Run the hook on a specific version of the language.
+    /// Default is `default`.
+    /// See https://pre-commit.com/#overriding-language-version.
     pub language_version: Option<String>,
+    /// Write the output of the hook to a file when the hook fails or verbose is enabled.
     pub log_file: Option<String>,
+    /// This hook will execute using a single process instead of in parallel.
+    /// Default is false.
     pub require_serial: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_option_vec")]
+    /// Select which git hook(s) to run for.
+    /// Default all stages are selected.
+    /// See https://pre-commit.com/#confining-hooks-to-run-at-certain-stages.
     pub stages: Option<Vec<Stage>>,
+    /// Print the output of the hook even if it passes.
+    /// Default is false.
     pub verbose: Option<bool>,
     pub minimum_pre_commit_version: Option<String>,
 }
