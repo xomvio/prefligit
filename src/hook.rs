@@ -6,7 +6,9 @@ use anyhow::Result;
 use clap::ValueEnum;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use itertools::Itertools;
 use thiserror::Error;
+use tracing::error;
 use url::Url;
 
 use crate::config::{
@@ -197,7 +199,7 @@ impl Project {
             let hook = hook_config.clone();
 
             // If the hook doesn't need an environment, don't do any preparation.
-            if hook.language.need_install() {
+            if hook.language.environment_dir().is_some() {
                 let path = store
                     .prepare_local_repo(&hook, hook.additional_dependencies.clone(), printer)
                     .await
@@ -305,7 +307,7 @@ impl HookBuilder {
     fn check(&self) {
         let language = self.config.language;
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
-        if !language.need_install() {
+        if language.environment_dir().is_none() {
             if self.config.language_version.is_some() {
                 warn_user!(
                     "Language {} does not need environment, but language_version is set",
@@ -432,7 +434,7 @@ impl Hook {
     }
 
     /// Get the environment directory that the hook will be installed to.
-    fn environment_dir(&self) -> Option<PathBuf> {
+    pub fn environment_dir(&self) -> Option<PathBuf> {
         let lang = self.language;
         let Some(env_dir) = lang.environment_dir() else {
             return None;
@@ -440,18 +442,79 @@ impl Hook {
         Some(self.path().join(env_dir).join(&self.language_version))
     }
 
+    pub fn install_key(&self) -> (String, String, String) {
+        (
+            self.path().display().to_string(),
+            self.language.to_string(),
+            self.language_version.clone(),
+        )
+    }
+
     /// Check if the hook is installed.
     pub fn installed(&self) -> bool {
-        if !self.language.need_install() {
+        let Some(env) = self.environment_dir() else {
             return true;
+        };
+
+        let state_file_v2 = env.join(".install_state_v2");
+        let state_file_v1 = env.join(".install_state_v1");
+
+        if state_file_v2.exists() {
+            return true;
+        };
+
+        let state_v1 = match fs_err::read_to_string(&state_file_v1) {
+            Ok(state) => state,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return false,
+            Err(err) => {
+                error!("Failed to read install state file: {}", err);
+                return false;
+            }
+        };
+
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        struct StateV1 {
+            additional_dependencies: Vec<String>,
         }
-        // let lang = self.config.language;
-        false
+        let state_v1: StateV1 = match serde_json::from_str(&state_v1) {
+            Ok(state) => state,
+            Err(err) => {
+                error!("Failed to parse install state file: {}", err);
+                return false;
+            }
+        };
+
+        state_v1.additional_dependencies
+            == *self.additional_dependencies.as_ref().unwrap_or(&Vec::new())
     }
 }
 
-pub async fn install_hooks(_hooks: &[Hook], _printer: Printer) -> Result<()> {
-    todo!()
+async fn install_hook(hook: &Hook, _env_dir: PathBuf) -> Result<()> {
+    let lang = hook.language;
+    if lang.environment_dir().is_some() {
+        lang.install(hook).await?;
+    }
+    Ok(())
+}
+
+pub async fn install_hooks(hooks: &[Hook], _printer: Printer) -> Result<()> {
+    let to_install = hooks
+        .iter()
+        .filter(|&hook| !hook.installed())
+        .unique_by(|&hook| hook.install_key());
+
+    let mut tasks = FuturesUnordered::new();
+    for hook in to_install {
+        if let Some(env_dir) = hook.environment_dir() {
+            tasks.push(async move { install_hook(hook, env_dir).await });
+        }
+    }
+    while let Some(result) = tasks.next().await {
+        result?;
+    }
+
+    Ok(())
 }
 
 pub async fn run_hooks(_hooks: &[Hook], _printer: Printer) -> Result<()> {

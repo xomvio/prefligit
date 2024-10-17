@@ -23,6 +23,7 @@ pub(crate) async fn run(
 
     // TODO: check .pre-commit-config.yaml status and git status
     // TODO: fill env vars
+    // TODO: impl staged_files_only
 
     let lock = store.lock_async().await?;
     let hooks = project.prepare_hooks(&store, printer).await?;

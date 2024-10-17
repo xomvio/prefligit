@@ -1,21 +1,26 @@
-use crate::languages::Language;
+use crate::hook::Hook;
+use crate::languages::DEFAULT_VERSION;
 
 pub struct Node;
 
-impl Language for Node {
-    fn name(&self) -> &str {
+impl Node {
+    pub fn name(&self) -> &str {
         "Node"
     }
 
-    fn environment_dir(&self) -> Option<&str> {
+    pub fn default_version(&self) -> &str {
+        DEFAULT_VERSION
+    }
+
+    pub fn environment_dir(&self) -> Option<&str> {
         Some("node-env")
     }
 
-    fn install(&self) -> anyhow::Result<()> {
+    pub async fn install(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 
-    fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 }

@@ -2,55 +2,84 @@ mod node;
 mod python;
 mod system;
 
-use std::ops::Deref;
-
 use anyhow::Result;
 
-use crate::config;
+use crate::config::Language;
+use crate::hook::Hook;
 
 pub const DEFAULT_VERSION: &str = "default";
 
-pub trait Language {
-    fn name(&self) -> &str;
-    fn default_version(&self) -> &str {
-        DEFAULT_VERSION
-    }
-    fn need_install(&self) -> bool {
-        self.environment_dir().is_some()
-    }
-    fn environment_dir(&self) -> Option<&str> {
-        None
-    }
-    fn install(&self) -> Result<()>;
-    fn run(&self) -> Result<()>;
-}
-
-impl Deref for config::Language {
-    type Target = dyn Language;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            // Self::Conda => &crate::languages::Conda,
-            // Self::Coursier => &crate::languages::Coursier,
-            // Self::Dart => &crate::languages::Dart,
-            // Self::Docker => &crate::languages::Docker,
-            // Self::DockerImage => &crate::languages::DockerImage,
-            // Self::Dotnet => &crate::languages::Dotnet,
-            // Self::Fail => &crate::languages::Fail,
-            // Self::Golang => &crate::languages::Golang,
-            // Self::Haskell => &crate::languages::Haskell,
-            // Self::Lua => &crate::languages::Lua,
-            Self::Node => &node::Node,
-            // Self::Perl => &crate::languages::Perl,
-            Self::Python => &python::Python,
-            // Self::R => &crate::languages::R,
-            // Self::Ruby => &crate::languages::Ruby,
-            // Self::Rust => &crate::languages::Rust,
-            // Self::Swift => &crate::languages::Swift,
-            // Self::Pygrep => &crate::languages::Pygrep,
-            // Self::Script => &crate::languages::Script,
-            Self::System => &system::System,
+macro_rules! delegate_to_language {
+    ( $lang:ident, $func:ident $(, $param:ident )* ) => {
+        match $lang {
+            // Self::Conda => crate::languages::Conda.$func($($param),*),
+            // Self::Coursier => crate::languages::Coursier.$func($($param),*),
+            // Self::Dart => crate::languages::Dart.$func($($param),*),
+            // Self::Docker => crate::languages::Docker.$func($($param),*),
+            // Self::DockerImage => crate::languages::DockerImage.$func($($param),*),
+            // Self::Dotnet => crate::languages::Dotnet.$func($($param),*),
+            // Self::Fail => crate::languages::Fail.$func($($param),*),
+            // Self::Golang => crate::languages::Golang.$func($($param),*),
+            // Self::Haskell => crate::languages::Haskell.$func($($param),*),
+            // Self::Lua => crate::languages::Lua.$func($($param),*),
+            Language::Node => node::Node.$func($($param),*),
+            // Self::Perl => crate::languages::Perl.$func($($param),*),
+            Language::Python => python::Python.$func($($param),*),
+            // Self::R => crate::languages::R.$func($($param),*),
+            // Self::Ruby => crate::languages::Ruby.$func($($param),*),
+            // Self::Rust => crate::languages::Rust.$func($($param),*),
+            // Self::Swift => crate::languages::Swift.$func($($param),*),
+            // Self::Pygrep => crate::languages::Pygrep.$func($($param),*),
+            // Self::Script => crate::languages::Script.$func($($param),*),
+            Language::System => system::System.$func($($param),*),
             _ => unimplemented!(),
         }
+    };
+    ( $lang:ident, async $func:ident $(, $param:ident )* ) => {
+        match $lang {
+            // Self::Conda => crate::languages::Conda.$func($($param),*),
+            // Self::Coursier => crate::languages::Coursier.$func($($param),*),
+            // Self::Dart => crate::languages::Dart.$func($($param),*),
+            // Self::Docker => crate::languages::Docker.$func($($param),*),
+            // Self::DockerImage => crate::languages::DockerImage.$func($($param),*),
+            // Self::Dotnet => crate::languages::Dotnet.$func($($param),*),
+            // Self::Fail => crate::languages::Fail.$func($($param),*),
+            // Self::Golang => crate::languages::Golang.$func($($param),*),
+            // Self::Haskell => crate::languages::Haskell.$func($($param),*),
+            // Self::Lua => crate::languages::Lua.$func($($param),*),
+            Language::Node => node::Node.$func($($param),*).await,
+            // Self::Perl => crate::languages::Perl.$func($($param),*),
+            Language::Python => python::Python.$func($($param),*).await,
+            // Self::R => crate::languages::R.$func($($param),*),
+            // Self::Ruby => crate::languages::Ruby.$func($($param),*),
+            // Self::Rust => crate::languages::Rust.$func($($param),*),
+            // Self::Swift => crate::languages::Swift.$func($($param),*),
+            // Self::Pygrep => crate::languages::Pygrep.$func($($param),*),
+            // Self::Script => crate::languages::Script.$func($($param),*),
+            Language::System => system::System.$func($($param),*).await,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Language {
+    pub fn name(&self) -> &str {
+        delegate_to_language!(self, name)
+    }
+
+    pub fn default_version(&self) -> &str {
+        delegate_to_language!(self, default_version)
+    }
+
+    pub fn environment_dir(&self) -> Option<&str> {
+        delegate_to_language!(self, environment_dir)
+    }
+
+    pub async fn install(&self, hook: &Hook) -> Result<()> {
+        delegate_to_language!(self, async install, hook)
+    }
+
+    pub async fn run(&self, hook: &Hook) -> Result<()> {
+        delegate_to_language!(self, async run, hook)
     }
 }

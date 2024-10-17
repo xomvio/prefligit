@@ -1,21 +1,26 @@
-use crate::languages::Language;
+use crate::hook::Hook;
+use crate::languages::DEFAULT_VERSION;
 
 pub struct Python;
 
-impl Language for Python {
-    fn name(&self) -> &str {
+impl Python {
+    pub fn name(&self) -> &str {
         "Python"
     }
 
-    fn environment_dir(&self) -> Option<&str> {
+    pub fn default_version(&self) -> &str {
+        DEFAULT_VERSION
+    }
+
+    pub fn environment_dir(&self) -> Option<&str> {
         Some("py-env")
     }
 
-    fn install(&self) -> anyhow::Result<()> {
+    pub async fn install(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 
-    fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 }

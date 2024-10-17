@@ -1,21 +1,26 @@
-use crate::languages::Language;
+use crate::hook::Hook;
+use crate::languages::DEFAULT_VERSION;
 
 pub struct System;
 
-impl Language for System {
-    fn name(&self) -> &str {
+impl System {
+    pub fn name(&self) -> &str {
         "System"
     }
 
-    fn need_install(&self) -> bool {
-        false
+    pub fn default_version(&self) -> &str {
+        DEFAULT_VERSION
     }
 
-    fn install(&self) -> anyhow::Result<()> {
+    pub fn environment_dir(&self) -> Option<&str> {
+        None
+    }
+
+    pub async fn install(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 
-    fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 }
