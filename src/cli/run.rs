@@ -6,7 +6,7 @@ use owo_colors::OwoColorize;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
-use crate::hook::Project;
+use crate::hook::{Hook, Project};
 use crate::printer::Printer;
 use crate::store::Store;
 
@@ -63,7 +63,7 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Failure);
     }
 
-    // TODO: apply skips
+    let hooks = apply_skips(hooks);
 
     // store.install_hooks(&hooks).await?;
     drop(lock);
@@ -78,4 +78,21 @@ pub(crate) async fn run(
     }
 
     Ok(ExitStatus::Success)
+}
+
+fn apply_skips(hooks: Vec<Hook>) -> Vec<Hook> {
+    let skips = match std::env::var_os("SKIP") {
+        Some(s) if !s.is_empty() => s
+            .to_string_lossy()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>(),
+        _ => return hooks,
+    };
+
+    hooks
+        .into_iter()
+        .filter(|h| !skips.contains(&h.id))
+        .collect()
 }
