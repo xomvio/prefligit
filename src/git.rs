@@ -47,6 +47,70 @@ fn git_cmd() -> Result<Command, Error> {
     Ok(cmd)
 }
 
+fn zsplit(s: &[u8]) -> Vec<String> {
+    let s = String::from_utf8_lossy(s);
+    let s = s.trim_end_matches('\0');
+    if s.is_empty() {
+        vec![]
+    } else {
+        s.split('\0').map(|s| s.to_string()).collect()
+    }
+}
+
+pub async fn get_changed_files(old: &str, new: &str) -> Result<Vec<String>, Error> {
+    let output = git_cmd()?
+        .arg("diff")
+        .arg("--name-only")
+        .arg("--diff-filter=ACMRT")
+        .arg("--no-ext-diff") // Disable external diff drivers
+        .arg("-z") // Use NUL as line terminator
+        .arg(format!("{}...{}", old, new))
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(zsplit(&output.stdout))
+}
+
+pub async fn get_all_files() -> Result<Vec<String>, Error> {
+    let output = git_cmd()?
+        .arg("ls-files")
+        .arg("-z")
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(zsplit(&output.stdout))
+}
+
+pub async fn get_git_dir() -> Result<PathBuf, Error> {
+    let output = git_cmd()?
+        .arg("rev-parse")
+        .arg("--git-dir")
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(PathBuf::from(
+        String::from_utf8_lossy(&output.stdout).trim(),
+    ))
+}
+
+pub async fn get_staged_files() -> Result<Vec<String>, Error> {
+    let output = git_cmd()?
+        .arg("diff")
+        .arg("--staged")
+        .arg("--name-only")
+        .arg("--diff-filter=ACMRTUXB") // Everything except for D
+        .arg("--no-ext-diff") // Disable external diff drivers
+        .arg("-z") // Use NUL as line terminator
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(zsplit(&output.stdout))
+}
+
 pub async fn has_unmerged_paths(path: &Path) -> Result<bool, Error> {
     let output = git_cmd()?
         .arg("ls-files")

@@ -205,14 +205,38 @@ pub(crate) struct RunArgs {
     pub(crate) all_files: bool,
     #[arg(long, conflicts_with = "all_files")]
     pub(crate) files: Vec<PathBuf>,
-    #[arg(long, requires = "to_ref")]
+    #[arg(short = 's', long, alias = "source", requires = "to_ref")]
     pub(crate) from_ref: Option<String>,
-    #[arg(long, requires = "from_ref")]
+    #[arg(short = 'o', long, alias = "origin", requires = "from_ref")]
     pub(crate) to_ref: Option<String>,
     #[arg(long)]
     pub(crate) hook_stage: Option<Stage>,
     #[arg(long)]
     pub(crate) show_diff_on_failure: bool,
+    #[arg(long)]
+    pub(crate) remote_branch: Option<String>,
+    #[arg(long)]
+    pub(crate) local_branch: Option<String>,
+    #[arg(long)]
+    pub(crate) pre_rebase_upstream: Option<String>,
+    #[arg(long)]
+    pub(crate) pre_rebase_branch: Option<String>,
+    #[arg(long)]
+    pub(crate) commit_msg_filename: Option<String>,
+    #[arg(long)]
+    pub(crate) prepare_commit_message_source: Option<String>,
+    #[arg(long)]
+    pub(crate) commit_object_name: Option<String>,
+    #[arg(long)]
+    pub(crate) remote_name: Option<String>,
+    #[arg(long)]
+    pub(crate) remote_url: Option<String>,
+    #[arg(long)]
+    pub(crate) checkout_type: Option<String>,
+    #[arg(long)]
+    pub(crate) is_squash_merge: bool,
+    #[arg(long)]
+    pub(crate) rewrite_command: Option<String>,
 }
 
 #[derive(Debug, Args)]

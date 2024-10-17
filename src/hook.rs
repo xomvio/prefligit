@@ -561,7 +561,7 @@ pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     Ok(())
 }
 
-async fn run_hook(hook: &Hook, filenames: Vec<String>, printer: Printer) -> Result<()> {
+async fn run_hook(hook: &Hook, filenames: &[String], printer: Printer) -> Result<()> {
     // TODO: check files diff
     // TODO: group filenames and run in parallel
 
@@ -578,7 +578,12 @@ async fn run_hook(hook: &Hook, filenames: Vec<String>, printer: Printer) -> Resu
     Ok(())
 }
 
-pub async fn run_hooks(hooks: &[Hook], skips: &[String], printer: Printer) -> Result<()> {
+pub async fn run_hooks(
+    hooks: &[Hook],
+    skips: &[String],
+    filenames: Vec<String>,
+    printer: Printer,
+) -> Result<()> {
     // TODO: collect files
     // TODO: classify files
 
@@ -590,7 +595,7 @@ pub async fn run_hooks(hooks: &[Hook], skips: &[String], printer: Printer) -> Re
         }
 
         // TODO: handle single hook result
-        run_hook(hook, vec![], printer).await?
+        run_hook(hook, &filenames, printer).await?
     }
 
     Ok(())

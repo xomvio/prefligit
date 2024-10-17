@@ -3,10 +3,12 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use owo_colors::OwoColorize;
+use tracing::trace;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
-use crate::hook::{install_hooks, run_hooks, Hook, Project};
+use crate::git::{get_all_files, get_changed_files, get_staged_files};
+use crate::hook::{install_hooks, run_hooks, Project};
 use crate::printer::Printer;
 use crate::store::Store;
 
@@ -76,7 +78,8 @@ pub(crate) async fn run(
     install_hooks(&to_install, printer).await?;
     drop(lock);
 
-    run_hooks(&hooks, &skips, printer).await?;
+    let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
+    run_hooks(&hooks, &skips, filenames, printer).await?;
 
     Ok(ExitStatus::Success)
 }
@@ -93,35 +96,50 @@ fn get_skips() -> Vec<String> {
     }
 }
 
-// Get all filenames to run hooks on.
-// fn all_filenames(
-//     hook_stage: Option<Stage>,
-//     from_ref: Option<String>,
-//     to_ref: Option<String>,
-//     all_files: bool,
-//     files: Vec<PathBuf>,
-//     commit_msg_filename: Option<String>,
-// ) -> impl Iterator<Item = String> {
-//     if hook_stage.is_some_and(|stage| !stage.operate_on_files()) {
-//         return iter::empty();
-//     }
-//     if hook_stage.is_some_and(|stage| matches!(stage, Stage::PrepareCommitMsg | Stage::CommitMsg)) {
-//         return iter::once(commit_msg_filename.unwrap());
-//     }
-//     match (from_ref, to_ref) {
-//         (Some(from_ref), Some(to_ref)) => {
-//             return get_changed_files(from_ref, to_ref);
-//         }
-//         _ => {}
-//     }
-//     if !files.is_empty() {
-//         return files.into_iter().map(|f| f.to_string_lossy().to_string());
-//     }
-//     if all_files {
-//         return get_all_files();
-//     }
-//     if is_in_merge_conflict() {
-//         return get_conflicted_files();
-//     }
-//     get_staged_files()
-// }
+/// Get all filenames to run hooks on.
+async fn all_filenames(
+    hook_stage: Option<Stage>,
+    from_ref: Option<String>,
+    to_ref: Option<String>,
+    all_files: bool,
+    files: Vec<PathBuf>,
+) -> Result<Vec<String>> {
+    if hook_stage.is_some_and(|stage| !stage.operate_on_files()) {
+        return Ok(vec![]);
+    }
+    // if hook_stage.is_some_and(|stage| matches!(stage, Stage::PrepareCommitMsg | Stage::CommitMsg)) {
+    //     return iter::once(commit_msg_filename.unwrap());
+    // }
+    match (from_ref, to_ref) {
+        (Some(from_ref), Some(to_ref)) => {
+            let files = get_changed_files(&from_ref, &to_ref).await?;
+            trace!(
+                "Files changed between {} and {}: {}",
+                from_ref,
+                to_ref,
+                files.len()
+            );
+            return Ok(files);
+        }
+        _ => {}
+    }
+    if !files.is_empty() {
+        let files: Vec<_> = files
+            .into_iter()
+            .map(|f| f.to_string_lossy().to_string())
+            .collect();
+        trace!("Files passed as arguments: {}", files.len());
+        return Ok(files);
+    }
+    if all_files {
+        let files = get_all_files().await?;
+        trace!("All files in the repo: {}", files.len());
+        return Ok(files);
+    }
+    // if is_in_merge_conflict() {
+    //     return get_conflicted_files();
+    // }
+    let files = get_staged_files().await?;
+    trace!("Staged files: {} {:?}", files.len(), &files);
+    Ok(files)
+}
