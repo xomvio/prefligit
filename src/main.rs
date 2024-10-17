@@ -11,6 +11,7 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::EnvFilter;
 
 use crate::cli::{Cli, Command, ExitStatus};
+use crate::git::get_root;
 use crate::printer::Printer;
 
 mod cli;
@@ -91,8 +92,12 @@ async fn run(cli: Cli) -> Result<ExitStatus> {
         warnings::enable();
     }
 
+    let root = get_root().await?;
+    std::env::set_current_dir(&root)?;
+
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
+    debug!("git root: {:?}", &root);
 
     let command = cli.command.unwrap_or(Command::Run(cli.run_args));
     match command {

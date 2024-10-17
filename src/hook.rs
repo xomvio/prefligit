@@ -556,6 +556,14 @@ pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_hooks(_hooks: &[Hook], _printer: Printer) -> Result<()> {
-    todo!()
+pub async fn run_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
+    // TODO: collect files
+    // TODO: classify files
+
+    for hook in hooks {
+        writeln!(printer.stdout(), "Running hook {}", hook)?;
+        hook.language.run(hook).await?;
+    }
+
+    Ok(())
 }

@@ -59,6 +59,18 @@ pub async fn has_unmerged_paths(path: &Path) -> Result<bool, Error> {
     Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
+/// Get the path of the top-level directory of the working tree.
+pub async fn get_root() -> Result<PathBuf, Error> {
+    let output = git_cmd()?
+        .arg("rev-parse")
+        .arg("--show-toplevel")
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()))
+}
+
 pub async fn is_dirty(path: &Path) -> Result<bool, Error> {
     let output = git_cmd()?
         .arg("diff")
