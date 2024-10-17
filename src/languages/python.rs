@@ -7,12 +7,8 @@ impl Language for Python {
         "Python"
     }
 
-    fn need_install(&self) -> bool {
-        true
-    }
-
-    fn environment_dir(&self) -> &str {
-        "py-env"
+    fn environment_dir(&self) -> Option<&str> {
+        Some("py-env")
     }
 
     fn install(&self) -> anyhow::Result<()> {

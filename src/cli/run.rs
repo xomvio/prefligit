@@ -22,6 +22,7 @@ pub(crate) async fn run(
     let project = Project::current(config)?;
 
     // TODO: check .pre-commit-config.yaml status and git status
+    // TODO: fill env vars
 
     let lock = store.lock_async().await?;
     let hooks = project.hooks(&store).await?;

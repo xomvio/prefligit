@@ -11,10 +11,6 @@ impl Language for System {
         false
     }
 
-    fn environment_dir(&self) -> &str {
-        "system"
-    }
-
     fn install(&self) -> anyhow::Result<()> {
         todo!()
     }

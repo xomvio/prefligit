@@ -15,8 +15,12 @@ pub trait Language {
     fn default_version(&self) -> &str {
         DEFAULT_VERSION
     }
-    fn need_install(&self) -> bool;
-    fn environment_dir(&self) -> &str;
+    fn need_install(&self) -> bool {
+        self.environment_dir().is_some()
+    }
+    fn environment_dir(&self) -> Option<&str> {
+        None
+    }
     fn install(&self) -> Result<()>;
     fn run(&self) -> Result<()>;
 }

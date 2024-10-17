@@ -32,23 +32,17 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone)]
-pub struct RemoteRepo {
-    /// Path to the stored repo.
-    path: PathBuf,
-    url: Url,
-    rev: String,
-    hooks: Vec<ManifestHook>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LocalRepo {
-    hooks: Vec<ManifestHook>,
-}
-
-#[derive(Debug, Clone)]
 pub enum Repo {
-    Remote(RemoteRepo),
-    Local(LocalRepo),
+    Remote {
+        /// Path to the stored repo.
+        path: PathBuf,
+        url: Url,
+        rev: String,
+        hooks: Vec<ManifestHook>,
+    },
+    Local {
+        hooks: Vec<ManifestHook>,
+    },
     Meta,
 }
 
@@ -62,17 +56,17 @@ impl Repo {
         let manifest = read_manifest(&path)?;
         let hooks = manifest.hooks;
 
-        Ok(Self::Remote(RemoteRepo {
+        Ok(Self::Remote {
             path,
             url,
             rev: rev.to_string(),
             hooks,
-        }))
+        })
     }
 
     /// Construct a local repo from a list of hooks.
     pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self, Error> {
-        Ok(Self::Local(LocalRepo { hooks }))
+        Ok(Self::Local { hooks })
     }
 
     pub fn meta() -> Self {
@@ -82,8 +76,8 @@ impl Repo {
     /// Get a hook by id.
     pub fn get_hook(&self, id: &str) -> Option<&ManifestHook> {
         let hooks = match self {
-            Repo::Remote(repo) => &repo.hooks,
-            Repo::Local(repo) => &repo.hooks,
+            Repo::Remote { ref hooks, .. } => hooks,
+            Repo::Local { ref hooks } => hooks,
             Repo::Meta => return None,
         };
         hooks.iter().find(|hook| hook.id == id)
@@ -93,8 +87,8 @@ impl Repo {
 impl Display for Repo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Repo::Remote(repo) => write!(f, "{}@{}", repo.url, repo.rev),
-            Repo::Local(_) => write!(f, "local"),
+            Repo::Remote { url, rev, .. } => write!(f, "{}@{}", url, rev),
+            Repo::Local { .. } => write!(f, "local"),
             Repo::Meta => write!(f, "meta"),
         }
     }
@@ -215,18 +209,18 @@ impl Project {
     }
 }
 
-pub struct HookBuilder {
+struct HookBuilder {
     src: String,
     config: ManifestHook,
 }
 
 impl HookBuilder {
-    pub fn new(src: String, config: ManifestHook) -> Self {
+    fn new(src: String, config: ManifestHook) -> Self {
         Self { src, config }
     }
 
     /// Update the hook from the project level hook configuration.
-    pub fn update(&mut self, config: &ConfigRemoteHook) -> &mut Self {
+    fn update(&mut self, config: &ConfigRemoteHook) -> &mut Self {
         macro_rules! update_if_some {
             ($($field:ident),* $(,)?) => {
                 $(
@@ -271,7 +265,7 @@ impl HookBuilder {
     }
 
     /// Combine the hook configuration with the project level hook configuration.
-    pub fn combine(&mut self, config: &ConfigWire) {
+    fn combine(&mut self, config: &ConfigWire) {
         let language = self.config.language;
         if self.config.language_version.is_none() {
             self.config.language_version = config
@@ -326,7 +320,7 @@ impl HookBuilder {
     }
 
     /// Build the hook.
-    pub fn build(mut self) -> Hook {
+    fn build(mut self) -> Hook {
         self.check();
         self.fill_in_defaults();
 
@@ -435,11 +429,12 @@ impl Hook {
     }
 
     /// Get the environment directory that the hook will be installed to.
-    fn environment_dir(&self) -> PathBuf {
+    fn environment_dir(&self) -> Option<PathBuf> {
         let lang = self.language;
-        self.path()
-            .join(lang.environment_dir())
-            .join(&self.language_version)
+        let Some(env_dir) = lang.environment_dir() else {
+            return None;
+        };
+        Some(self.path().join(env_dir).join(&self.language_version))
     }
 
     /// Check if the hook is installed.

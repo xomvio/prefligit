@@ -7,12 +7,8 @@ impl Language for Node {
         "Node"
     }
 
-    fn need_install(&self) -> bool {
-        true
-    }
-
-    fn environment_dir(&self) -> &str {
-        "node-env"
+    fn environment_dir(&self) -> Option<&str> {
+        Some("node-env")
     }
 
     fn install(&self) -> anyhow::Result<()> {
