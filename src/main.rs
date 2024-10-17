@@ -97,21 +97,25 @@ async fn run(cli: Cli) -> Result<ExitStatus> {
 
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
-    debug!("git root: {:?}", &root);
+    debug!("Git root: {:?}", &root);
 
     let command = cli.command.unwrap_or(Command::Run(cli.run_args));
     match command {
-        Command::Install(options) => cli::install(
+        Command::Install(args) => cli::install(
             cli.globals.config,
-            options.hook_type,
-            options.install_hooks,
+            args.hook_type,
+            args.install_hooks,
             printer,
         ),
-        Command::Run(options) => {
+        Command::Run(args) => {
             cli::run(
                 cli.globals.config,
-                options.hook_id,
-                options.hook_stage,
+                args.hook_id,
+                args.hook_stage,
+                args.from_ref,
+                args.to_ref,
+                args.all_files,
+                args.files,
                 printer,
             )
             .await

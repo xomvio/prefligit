@@ -68,7 +68,9 @@ pub async fn get_root() -> Result<PathBuf, Error> {
         .await
         .map_err(OutputError::with_cause)?
         .ok()?;
-    Ok(PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()))
+    Ok(PathBuf::from(
+        String::from_utf8_lossy(&output.stdout).trim(),
+    ))
 }
 
 pub async fn is_dirty(path: &Path) -> Result<bool, Error> {

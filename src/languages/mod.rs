@@ -79,7 +79,7 @@ impl Language {
         delegate_to_language!(self, async install, hook)
     }
 
-    pub async fn run(&self, hook: &Hook) -> Result<()> {
-        delegate_to_language!(self, async run, hook)
+    pub async fn run(&self, hook: &Hook, filenames: Vec<String>) -> Result<()> {
+        delegate_to_language!(self, async run, hook, filenames)
     }
 }

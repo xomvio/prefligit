@@ -466,7 +466,7 @@ impl Hook {
     }
 
     // TODO: health check
-    /// Check if the hook is installed.
+    /// Check if the hook is installed in the environment.
     pub fn installed(&self) -> bool {
         let Some(env) = self.environment_dir() else {
             return true;
@@ -504,6 +504,7 @@ impl Hook {
         state_v1.additional_dependencies == self.additional_dependencies
     }
 
+    /// Write a state file to mark the hook as installed.
     pub fn mark_installed(&self) -> Result<(), Error> {
         let env = self.environment_dir().unwrap();
         let state_file_v2 = env.join(".install_state_v2");
@@ -556,13 +557,26 @@ pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     Ok(())
 }
 
+async fn run_hook(hook: &Hook, filenames: Vec<String>, printer: Printer) -> Result<()> {
+    // TODO: check files diff
+    // TODO: group filenames and run in parallel
+
+    writeln!(printer.stdout(), "Running hook {}", hook)?;
+    let start = std::time::Instant::now();
+    hook.language.run(hook, filenames).await?;
+    writeln!(printer.stdout(), "Hook completed in {:?}", start.elapsed())?;
+
+    Ok(())
+}
+
 pub async fn run_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     // TODO: collect files
     // TODO: classify files
 
+    // hooks must run in serial
     for hook in hooks {
-        writeln!(printer.stdout(), "Running hook {}", hook)?;
-        hook.language.run(hook).await?;
+        // TODO: handle single hook result
+        run_hook(hook, vec![], printer).await?
     }
 
     Ok(())

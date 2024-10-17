@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use assert_cmd::output::{OutputError, OutputOkExt};
 use tokio::process::Command;
 
@@ -50,7 +52,41 @@ impl Python {
         Ok(())
     }
 
-    pub async fn run(&self, _hook: &Hook) -> anyhow::Result<()> {
-        todo!()
+    pub async fn run(&self, hook: &Hook, filenames: Vec<String>) -> anyhow::Result<()> {
+        // Construct the `PATH` environment variable.
+        let env = hook.environment_dir().unwrap();
+
+        let new_path = std::env::join_paths(
+            std::iter::once(bin_dir(env.as_path())).chain(
+                std::env::var_os("PATH")
+                    .as_ref()
+                    .iter()
+                    .flat_map(std::env::split_paths),
+            ),
+        )?;
+
+        // TODO handle signals
+        let cmds = shlex::split(&hook.entry).ok_or(anyhow::anyhow!("Failed to parse entry"))?;
+        Command::new(&cmds[0])
+            .args(&cmds[1..])
+            .args(filenames)
+            .current_dir(hook.path())
+            .env("VIRTUAL_ENV", &env)
+            .env("PATH", new_path)
+            .env_remove("PYTHONHOME")
+            .output()
+            .await
+            .map_err(OutputError::with_cause)?
+            .ok()?;
+
+        Ok(())
+    }
+}
+
+fn bin_dir(venv: &Path) -> PathBuf {
+    if cfg!(windows) {
+        venv.join("Scripts")
+    } else {
+        venv.join("bin")
     }
 }

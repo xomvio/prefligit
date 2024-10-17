@@ -136,6 +136,19 @@ impl Display for Stage {
     }
 }
 
+impl Stage {
+    pub fn operate_on_files(&self) -> bool {
+        match self {
+            Stage::PostCheckout
+            | Stage::PostCommit
+            | Stage::PostMerge
+            | Stage::PostRewrite
+            | Stage::PreRebase => false,
+            _ => true,
+        }
+    }
+}
+
 // TODO: warn unexpected keys
 // TODO: warn deprecated stage
 // TODO: warn sensible regex

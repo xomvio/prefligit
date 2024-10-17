@@ -20,7 +20,7 @@ impl System {
         todo!()
     }
 
-    pub async fn run(&self, _hook: &Hook) -> anyhow::Result<()> {
+    pub async fn run(&self, _hook: &Hook, filenames: Vec<String>) -> anyhow::Result<()> {
         todo!()
     }
 }

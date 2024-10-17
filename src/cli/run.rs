@@ -1,4 +1,5 @@
 use std::fmt::Write;
+use std::iter;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -14,6 +15,10 @@ pub(crate) async fn run(
     config: Option<PathBuf>,
     hook_id: Option<String>,
     hook_stage: Option<Stage>,
+    from_ref: Option<String>,
+    to_ref: Option<String>,
+    all_files: bool,
+    files: Vec<PathBuf>,
     printer: Printer,
 ) -> Result<ExitStatus> {
     // TODO: find git root
@@ -99,3 +104,36 @@ fn apply_skips(hooks: Vec<Hook>) -> Vec<Hook> {
         .filter(|h| !skips.contains(&h.id))
         .collect()
 }
+
+// Get all filenames to run hooks on.
+// fn all_filenames(
+//     hook_stage: Option<Stage>,
+//     from_ref: Option<String>,
+//     to_ref: Option<String>,
+//     all_files: bool,
+//     files: Vec<PathBuf>,
+//     commit_msg_filename: Option<String>,
+// ) -> impl Iterator<Item = String> {
+//     if hook_stage.is_some_and(|stage| !stage.operate_on_files()) {
+//         return iter::empty();
+//     }
+//     if hook_stage.is_some_and(|stage| matches!(stage, Stage::PrepareCommitMsg | Stage::CommitMsg)) {
+//         return iter::once(commit_msg_filename.unwrap());
+//     }
+//     match (from_ref, to_ref) {
+//         (Some(from_ref), Some(to_ref)) => {
+//             return get_changed_files(from_ref, to_ref);
+//         }
+//         _ => {}
+//     }
+//     if !files.is_empty() {
+//         return files.into_iter().map(|f| f.to_string_lossy().to_string());
+//     }
+//     if all_files {
+//         return get_all_files();
+//     }
+//     if is_in_merge_conflict() {
+//         return get_conflicted_files();
+//     }
+//     get_staged_files()
+// }
