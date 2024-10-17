@@ -16,6 +16,7 @@ use crate::config::{
 };
 use crate::fs::CWD;
 use crate::languages::DEFAULT_VERSION;
+use crate::printer::Printer;
 use crate::store::Store;
 use crate::warn_user;
 
@@ -113,7 +114,7 @@ impl Project {
     }
 
     /// Load and prepare hooks for the project.
-    pub async fn hooks(&self, store: &Store) -> Result<Vec<Hook>, Error> {
+    pub async fn prepare_hooks(&self, store: &Store, printer: Printer) -> Result<Vec<Hook>, Error> {
         let mut hooks = Vec::new();
 
         // TODO: progress bar
@@ -126,7 +127,7 @@ impl Project {
                 tasks.push(async {
                     (
                         remote_repo.clone(),
-                        store.prepare_remote_repo(remote_repo, None).await,
+                        store.prepare_remote_repo(remote_repo, None, printer).await,
                     )
                 });
             }
@@ -163,7 +164,9 @@ impl Project {
                     let repo_config = repo_config.clone();
 
                     hook_tasks.push(async move {
-                        let path = store.prepare_remote_repo(&repo_config, Some(deps)).await?;
+                        let path = store
+                            .prepare_remote_repo(&repo_config, Some(deps), printer)
+                            .await?;
                         Ok::<Hook, crate::store::Error>(hook.with_path(path))
                     });
                 } else {
@@ -196,7 +199,7 @@ impl Project {
             // If the hook doesn't need an environment, don't do any preparation.
             if hook.language.need_install() {
                 let path = store
-                    .prepare_local_repo(&hook, hook.additional_dependencies.clone())
+                    .prepare_local_repo(&hook, hook.additional_dependencies.clone(), printer)
                     .await
                     .map_err(Box::new)?;
                 hooks.push(Hook::new_local(hook, Some(path)));
@@ -445,4 +448,12 @@ impl Hook {
         // let lang = self.config.language;
         false
     }
+}
+
+pub async fn install_hooks(_hooks: &[Hook], _printer: Printer) -> Result<()> {
+    todo!()
+}
+
+pub async fn run_hooks(_hooks: &[Hook], _printer: Printer) -> Result<()> {
+    todo!()
 }

@@ -6,7 +6,7 @@ use owo_colors::OwoColorize;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
-use crate::hook::{Hook, Project};
+use crate::hook::{install_hooks, run_hooks, Hook, Project};
 use crate::printer::Printer;
 use crate::store::Store;
 
@@ -25,7 +25,7 @@ pub(crate) async fn run(
     // TODO: fill env vars
 
     let lock = store.lock_async().await?;
-    let hooks = project.hooks(&store).await?;
+    let hooks = project.prepare_hooks(&store, printer).await?;
 
     let hooks: Vec<_> = hooks
         .into_iter()
@@ -65,8 +65,10 @@ pub(crate) async fn run(
 
     let hooks = apply_skips(hooks);
 
-    // store.install_hooks(&hooks).await?;
+    install_hooks(&hooks, printer).await?;
     drop(lock);
+
+    run_hooks(&hooks, printer).await?;
 
     for hook in hooks {
         writeln!(

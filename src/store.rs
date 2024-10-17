@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -9,6 +10,7 @@ use crate::config::{ConfigLocalHook, ConfigRemoteRepo};
 use crate::fs::{copy_dir_all, LockedFile};
 use crate::git::clone_repo;
 use crate::hook::Repo;
+use crate::printer::Printer;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -18,6 +20,8 @@ pub enum Error {
     LocalHookNoNeedEnv(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Fmt(#[from] std::fmt::Error),
     #[error(transparent)]
     DB(#[from] rusqlite::Error),
     #[error(transparent)]
@@ -184,6 +188,7 @@ impl Store {
         &self,
         hook: &ConfigLocalHook,
         deps: Option<Vec<String>>,
+        printer: Printer,
     ) -> Result<PathBuf, Error> {
         const LOCAL_NAME: &str = "local";
         const LOCAL_REV: &str = "1";
@@ -201,7 +206,12 @@ impl Store {
                     .tempdir_in(&self.path)?;
 
                 let path = temp.path().to_string_lossy().to_string();
-                debug!("Preparing local repo {} at {}", hook.id, path);
+                writeln!(
+                    printer.stdout(),
+                    "Preparing local repo {} at {}",
+                    hook.id,
+                    path
+                )?;
                 make_local_repo(LOCAL_NAME, temp.path())?;
                 self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
                 path
@@ -216,6 +226,7 @@ impl Store {
         &self,
         repo_config: &ConfigRemoteRepo,
         deps: Option<Vec<String>>,
+        printer: Printer,
     ) -> Result<PathBuf, Error> {
         if let Some((_, _, path)) = self.get_repo(
             repo_config.repo.as_str(),
@@ -239,20 +250,24 @@ impl Store {
             let (_, _, base_repo_path) = self
                 .get_repo(repo_config.repo.as_str(), repo_config.rev.as_str(), None)?
                 .expect("base repo should be cloned before");
-            debug!(
+            writeln!(
+                printer.stdout(),
                 "Preparing {}@{} with dependencies {} by copying from {} into {}",
                 repo_config.repo,
                 repo_config.rev,
                 deps.join(","),
                 base_repo_path,
-                path
-            );
+                path,
+            )?;
             copy_dir_all(base_repo_path, &path)?;
         } else {
-            debug!(
+            writeln!(
+                printer.stdout(),
                 "Cloning {}@{} into {}",
-                repo_config.repo, repo_config.rev, path
-            );
+                repo_config.repo,
+                repo_config.rev,
+                path
+            )?;
             clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
         }
 
