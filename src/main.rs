@@ -94,10 +94,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
     }
 
     // `--config` should be resolved relative to the non-root working directory.
-    cli.globals.config = cli
-        .globals
-        .config
-        .map(|path| CWD.join(path));
+    cli.globals.config = cli.globals.config.map(|path| CWD.join(path));
 
     let root = get_root().await?;
     std::env::set_current_dir(&root)?;
@@ -108,12 +105,15 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
 
     let command = cli.command.unwrap_or(Command::Run(cli.run_args));
     match command {
-        Command::Install(args) => cli::install(
-            cli.globals.config,
-            args.hook_type,
-            args.install_hooks,
-            printer,
-        ),
+        Command::Install(args) => {
+            cli::install(
+                cli.globals.config,
+                args.hook_type,
+                args.install_hooks,
+                printer,
+            )
+            .await
+        }
         Command::Run(args) => {
             cli::run(
                 cli.globals.config,

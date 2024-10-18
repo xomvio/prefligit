@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use rusqlite::Connection;
 use thiserror::Error;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::config::{ConfigLocalHook, ConfigRemoteRepo};
 use crate::fs::{copy_dir_all, LockedFile};
@@ -40,14 +40,14 @@ pub struct Store {
 impl Store {
     pub fn from_settings() -> Result<Self, Error> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
-            debug!(
+            trace!(
                 "Loading store from PRE_COMMIT_HOME: {}",
                 path.to_string_lossy()
             );
             return Ok(Self::from_path(path));
         } else if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
             let path = PathBuf::from(path).join("pre-commit");
-            debug!(
+            trace!(
                 "Loading store from XDG_CACHE_HOME: {}",
                 path.to_string_lossy()
             );
@@ -56,7 +56,7 @@ impl Store {
 
         let home = home::home_dir().ok_or(Error::HomeNotFound)?;
         let path = home.join(".cache").join("pre-commit");
-        debug!("Loading store from ~/.cache: {}", path.display());
+        trace!("Loading store from ~/.cache: {}", path.display());
         Ok(Self::from_path(path))
     }
 

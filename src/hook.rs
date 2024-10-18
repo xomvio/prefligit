@@ -9,7 +9,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::Itertools;
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 use url::Url;
 
 use crate::config::{
@@ -109,6 +109,10 @@ impl Project {
     /// Load a project configuration from a directory.
     pub fn from_directory(root: PathBuf, config: Option<PathBuf>) -> Result<Self, Error> {
         let config_path = config.unwrap_or_else(|| root.join(CONFIG_FILE));
+        trace!(
+            "Loading project configuration from {}",
+            config_path.display()
+        );
         let config = read_config(&config_path)?;
         Ok(Self { root, config })
     }
