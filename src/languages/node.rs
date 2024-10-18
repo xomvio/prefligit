@@ -23,7 +23,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn run(&self, _hook: &Hook, _filenames: &[String]) -> anyhow::Result<()> {
+    pub async fn run(&self, _hook: &Hook, _filenames: &[&String]) -> anyhow::Result<()> {
         Ok(())
     }
 }

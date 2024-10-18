@@ -52,7 +52,7 @@ impl Python {
         Ok(())
     }
 
-    pub async fn run(&self, hook: &Hook, filenames: &[String]) -> anyhow::Result<()> {
+    pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<()> {
         // Construct the `PATH` environment variable.
         let env = hook.environment_dir().unwrap();
 

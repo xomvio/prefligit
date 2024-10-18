@@ -94,6 +94,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
     }
 
     // `--config` should be resolved relative to the non-root working directory.
+    // TODO: should we adjust `run --files` too?
     cli.globals.config = cli.globals.config.map(|path| CWD.join(path));
 
     let root = get_root().await?;

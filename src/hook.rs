@@ -8,6 +8,7 @@ use clap::ValueEnum;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::Itertools;
+use regex::Regex;
 use thiserror::Error;
 use tracing::{debug, error, trace};
 use url::Url;
@@ -35,6 +36,8 @@ pub enum Error {
     Store(#[from] Box<crate::store::Error>),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Regex(#[from] regex::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +123,10 @@ impl Project {
     /// Load project configuration from the current directory.
     pub fn current(config: Option<PathBuf>) -> Result<Self, Error> {
         Self::from_directory(CWD.clone(), config)
+    }
+
+    pub fn config(&self) -> &ConfigWire {
+        &self.config
     }
 
     /// Load and prepare hooks for the project.
@@ -565,7 +572,7 @@ pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     Ok(())
 }
 
-async fn run_hook(hook: &Hook, filenames: &[String], printer: Printer) -> Result<()> {
+async fn run_hook(hook: &Hook, filenames: &[&String], printer: Printer) -> Result<()> {
     // TODO: check files diff
     // TODO: group filenames and run in parallel
 
@@ -585,11 +592,13 @@ async fn run_hook(hook: &Hook, filenames: &[String], printer: Printer) -> Result
 pub async fn run_hooks(
     hooks: &[Hook],
     skips: &[String],
-    filenames: Vec<String>,
+    filenames: Vec<&String>,
+    fail_fast: bool,
     printer: Printer,
 ) -> Result<()> {
-    // TODO: collect files
     // TODO: classify files
+
+    let mut success = true;
 
     // hooks must run in serial
     for hook in hooks {
@@ -598,9 +607,65 @@ pub async fn run_hooks(
             continue;
         }
 
+        let filenames: Vec<_> = filter_by_include_exclude(
+            filenames.iter().copied(),
+            hook.files.as_deref(),
+            hook.exclude.as_deref(),
+        )?
+        .collect();
+
+        if filenames.is_empty() && !hook.always_run {
+            writeln!(printer.stdout(), "No files matched for hook `{}`", hook)?;
+            continue;
+        }
+
         // TODO: handle single hook result
-        run_hook(hook, &filenames, printer).await?
+        let result = if hook.pass_filenames {
+            run_hook(hook, &filenames, printer).await
+        } else {
+            run_hook(hook, &[], printer).await
+        };
+
+        if let Err(err) = result {
+            success = false;
+            writeln!(printer.stderr(), "Hook failed: {}", err)?;
+            if fail_fast || hook.fail_fast {
+                return Err(err);
+            }
+        }
     }
 
-    Ok(())
+    if success {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Some hooks failed"))
+    }
+}
+
+pub fn filter_by_include_exclude<'a>(
+    filenames: impl Iterator<Item = &'a String>,
+    include: Option<&str>,
+    exclude: Option<&str>,
+) -> Result<impl Iterator<Item = &'a String>, Error> {
+    let include = include.map(|s| Regex::new(s)).transpose()?;
+    let exclude = exclude.map(|s| Regex::new(s)).transpose()?;
+
+    Ok(filenames.filter(move |filename| {
+        let filename = filename.as_str();
+        if !include
+            .as_ref()
+            .map(|re| re.is_match(filename))
+            .unwrap_or(true)
+        {
+            return false;
+        }
+        if exclude
+            .as_ref()
+            .map(|re| re.is_match(filename))
+            .unwrap_or(false)
+        {
+            return false;
+        }
+        true
+    }))
 }
