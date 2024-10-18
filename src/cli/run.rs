@@ -70,13 +70,17 @@ pub(crate) async fn run(
     }
 
     let skips = get_skips();
-    let to_install = hooks
+    let non_skipped = hooks
         .iter()
         .filter(|h| !skips.contains(&h.id) && !skips.contains(&h.alias))
         .cloned()
         .collect::<Vec<_>>();
 
-    install_hooks(&to_install, printer).await?;
+    trace!(
+        "Hooks going to run: {:?}",
+        non_skipped.iter().map(|h| &h.id).collect::<Vec<_>>()
+    );
+    install_hooks(&non_skipped, printer).await?;
     drop(lock);
 
     let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;

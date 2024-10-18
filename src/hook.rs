@@ -225,6 +225,22 @@ impl Project {
             }
         }
 
+        // Sort hooks by its appearance order in the config.
+        // TODO: can hook id be duplicated?
+        hooks.sort_by_key(|hook| {
+            self.config
+                .repos
+                .iter()
+                .enumerate()
+                .find_map(|(i, repo)| {
+                    repo.hook_ids()
+                        .iter()
+                        .position(|id| id == &hook.id)
+                        .map(|j| (i, j))
+                })
+                .expect("Hook not found in the config")
+        });
+
         Ok(hooks)
     }
 }
