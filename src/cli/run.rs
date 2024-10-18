@@ -20,6 +20,7 @@ pub(crate) async fn run(
     to_ref: Option<String>,
     all_files: bool,
     files: Vec<PathBuf>,
+    show_diff_on_failure: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
     let store = Store::from_settings()?.init()?;
@@ -91,6 +92,7 @@ pub(crate) async fn run(
         &skips,
         filenames,
         project.config().fail_fast.unwrap_or(false),
+        show_diff_on_failure,
         printer,
     )
     .await?;

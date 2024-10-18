@@ -594,6 +594,7 @@ pub async fn run_hooks(
     skips: &[String],
     filenames: Vec<&String>,
     fail_fast: bool,
+    show_diff_on_failure: bool,
     printer: Printer,
 ) -> Result<()> {
     // TODO: classify files
@@ -630,7 +631,7 @@ pub async fn run_hooks(
             success = false;
             writeln!(printer.stderr(), "Hook failed: {}", err)?;
             if fail_fast || hook.fail_fast {
-                return Err(err);
+                break;
             }
         }
     }
@@ -638,6 +639,9 @@ pub async fn run_hooks(
     if success {
         Ok(())
     } else {
+        if show_diff_on_failure {
+            todo!()
+        }
         Err(anyhow::anyhow!("Some hooks failed"))
     }
 }

@@ -124,6 +124,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
                 args.to_ref,
                 args.all_files,
                 args.files,
+                args.show_diff_on_failure,
                 printer,
             )
             .await
