@@ -201,41 +201,49 @@ pub(crate) struct RunArgs {
     /// The hook ID to run.
     #[arg(value_name = "HOOK")]
     pub(crate) hook_id: Option<String>,
-    #[arg(short, long)]
+    /// Run on all files in the repo.
+    #[arg(short, long, conflicts_with_all = ["files", "from_ref", "to_ref"])]
     pub(crate) all_files: bool,
-    #[arg(long, conflicts_with = "all_files")]
+    /// Specific filenames to run hooks on.
+    #[arg(long, conflicts_with_all = ["all_files", "from_ref", "to_ref"])]
     pub(crate) files: Vec<PathBuf>,
+    /// The original ref in a `from_ref...to_ref` diff expression.
+    /// Files changed in this diff will be run through the hooks.
     #[arg(short = 's', long, alias = "source", requires = "to_ref")]
     pub(crate) from_ref: Option<String>,
+    /// The destination ref in a `from_ref...to_ref` diff expression.
+    /// Files changed in this diff will be run through the hooks.
     #[arg(short = 'o', long, alias = "origin", requires = "from_ref")]
     pub(crate) to_ref: Option<String>,
+    /// The stage during which the hook is fired.
     #[arg(long)]
     pub(crate) hook_stage: Option<Stage>,
+    /// When hooks fail, run `git diff` directly afterward.
     #[arg(long)]
     pub(crate) show_diff_on_failure: bool,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) remote_branch: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) local_branch: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) pre_rebase_upstream: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) pre_rebase_branch: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true, required_if_eq_any = [("hook_stage", "prepare-commit-msg"), ("hook_stage", "commit-msg")])]
     pub(crate) commit_msg_filename: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) prepare_commit_message_source: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) commit_object_name: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) remote_name: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) remote_url: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) checkout_type: Option<String>,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) is_squash_merge: bool,
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub(crate) rewrite_command: Option<String>,
 }
 
