@@ -35,9 +35,9 @@ pub enum Language {
     System,
 }
 
-impl Display for Language {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl Language {
+    pub fn as_str(&self) -> &str {
+        match self {
             Self::Conda => "conda",
             Self::Coursier => "coursier",
             Self::Dart => "dart",
@@ -58,8 +58,13 @@ impl Display for Language {
             Self::Pygrep => "pygrep",
             Self::Script => "script",
             Self::System => "system",
-        };
-        write!(f, "{}", s)
+        }
+    }
+}
+
+impl Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -79,9 +84,9 @@ pub enum HookType {
     PrepareCommitMsg,
 }
 
-impl Display for HookType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl HookType {
+    pub fn as_str(&self) -> &str {
+        match self {
             Self::CommitMsg => "commit-msg",
             Self::PostCheckout => "post-checkout",
             Self::PostCommit => "post-commit",
@@ -92,8 +97,13 @@ impl Display for HookType {
             Self::PrePush => "pre-push",
             Self::PreRebase => "pre-rebase",
             Self::PrepareCommitMsg => "prepare-commit-msg",
-        };
-        write!(f, "{}", s)
+        }
+    }
+}
+
+impl Display for HookType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -117,9 +127,9 @@ pub enum Stage {
     PrepareCommitMsg,
 }
 
-impl Display for Stage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl Stage {
+    pub fn as_str(&self) -> &str {
+        match self {
             Self::Manual => "manual",
             Self::CommitMsg => "commit-msg",
             Self::PostCheckout => "post-checkout",
@@ -131,8 +141,13 @@ impl Display for Stage {
             Self::PrePush => "pre-push",
             Self::PreRebase => "pre-rebase",
             Self::PrepareCommitMsg => "prepare-commit-msg",
-        };
-        write!(f, "{}", s)
+        }
+    }
+}
+
+impl Display for Stage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -207,13 +222,19 @@ impl<'de> Deserialize<'de> for RepoLocation {
     }
 }
 
+impl RepoLocation {
+    pub fn as_str(&self) -> &str {
+        match self {
+            RepoLocation::Local => "local",
+            RepoLocation::Meta => "meta",
+            RepoLocation::Remote(_) => "remote",
+        }
+    }
+}
+
 impl Display for RepoLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RepoLocation::Local => write!(f, "local"),
-            RepoLocation::Meta => write!(f, "meta"),
-            RepoLocation::Remote(url) => write!(f, "{}", url),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -290,14 +311,19 @@ pub enum MetaHookID {
     Identify,
 }
 
-impl Display for MetaHookID {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl MetaHookID {
+    pub fn as_str(&self) -> &str {
+        match self {
             MetaHookID::CheckHooksApply => "check-hooks-apply",
             MetaHookID::CheckUselessExcludes => "check-useless-excludes",
             MetaHookID::Identify => "identify",
-        };
-        write!(f, "{}", s)
+        }
+    }
+}
+
+impl Display for MetaHookID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -393,6 +419,16 @@ impl<'de> Deserialize<'de> for ConfigRepo {
                     hooks,
                 }))
             }
+        }
+    }
+}
+
+impl ConfigRepo {
+    pub fn hook_ids(&self) -> Vec<&str> {
+        match self {
+            ConfigRepo::Remote(repo) => repo.hooks.iter().map(|h| h.id.as_str()).collect(),
+            ConfigRepo::Local(repo) => repo.hooks.iter().map(|h| h.id.as_str()).collect(),
+            ConfigRepo::Meta(repo) => repo.hooks.iter().map(|h| h.id.as_str()).collect(),
         }
     }
 }
