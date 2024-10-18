@@ -67,6 +67,10 @@ impl Store {
         }
     }
 
+    fn conn(&self) -> &Connection {
+        self.conn.as_ref().expect("store not initialized")
+    }
+
     /// Initialize the store.
     pub fn init(self) -> Result<Self, Error> {
         fs_err::create_dir_all(&self.path)?;
@@ -111,11 +115,7 @@ impl Store {
 
     /// List all repos.
     pub fn repos(&self) -> Result<Vec<Repo>, Error> {
-        let mut stmt = self
-            .conn
-            .as_ref()
-            .unwrap()
-            .prepare("SELECT repo, ref, path FROM repos")?;
+        let mut stmt = self.conn().prepare("SELECT repo, ref, path FROM repos")?;
 
         let rows: Vec<_> = stmt
             .query_map([], |row| {
@@ -153,9 +153,9 @@ impl Store {
     ) -> Result<Option<(String, String, String)>, Error> {
         let repo_name = Self::repo_name(repo, deps);
 
-        let conn = self.conn.as_ref().unwrap();
-        let mut stmt =
-            conn.prepare("SELECT repo, ref, path FROM repos WHERE repo = ? AND ref = ?")?;
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT repo, ref, path FROM repos WHERE repo = ? AND ref = ?")?;
         let mut rows = stmt.query([repo_name.as_str(), rev])?;
         let Some(row) = rows.next()? else {
             return Ok(None);
@@ -173,9 +173,7 @@ impl Store {
         let repo_name = Self::repo_name(repo, deps.as_ref());
 
         let mut stmt = self
-            .conn
-            .as_ref()
-            .unwrap()
+            .conn()
             .prepare("INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)")?;
         stmt.execute([repo_name.as_str(), rev, path])?;
         Ok(())
