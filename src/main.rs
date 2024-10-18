@@ -11,6 +11,7 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::EnvFilter;
 
 use crate::cli::{Cli, Command, ExitStatus};
+use crate::fs::CWD;
 use crate::git::get_root;
 use crate::printer::Printer;
 
@@ -67,7 +68,7 @@ fn setup_logging(level: Level) -> Result<()> {
     Ok(())
 }
 
-async fn run(cli: Cli) -> Result<ExitStatus> {
+async fn run(mut cli: Cli) -> Result<ExitStatus> {
     ColorChoice::write_global(cli.globals.color.into());
 
     setup_logging(match cli.globals.verbose {
@@ -91,6 +92,12 @@ async fn run(cli: Cli) -> Result<ExitStatus> {
     } else {
         warnings::enable();
     }
+
+    // `--config` should be resolved relative to the non-root working directory.
+    cli.globals.config = cli
+        .globals
+        .config
+        .map(|path| CWD.join(path));
 
     let root = get_root().await?;
     std::env::set_current_dir(&root)?;
