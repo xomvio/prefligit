@@ -8,7 +8,7 @@ use tracing::trace;
 use crate::cli::ExitStatus;
 use crate::config::Stage;
 use crate::git::{get_all_files, get_changed_files, get_staged_files};
-use crate::hook::{filter_by_include_exclude, install_hooks, run_hooks, Project};
+use crate::hook::{filter_filenames, install_hooks, run_hooks, Project};
 use crate::printer::Printer;
 use crate::store::Store;
 
@@ -84,7 +84,7 @@ pub(crate) async fn run(
     drop(lock);
 
     let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
-    let filenames = filter_by_include_exclude(
+    let filenames = filter_filenames(
         filenames.iter(),
         project.config().files.as_deref(),
         project.config().exclude.as_deref(),

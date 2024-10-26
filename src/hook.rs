@@ -61,8 +61,7 @@ impl Repo {
         let url = Url::parse(&url)?;
 
         let path = PathBuf::from(path);
-        let path = path.join(MANIFEST_FILE);
-        let manifest = read_manifest(&path)?;
+        let manifest = read_manifest(&path.join(MANIFEST_FILE))?;
         let hooks = manifest.hooks;
 
         Ok(Self::Remote {
@@ -90,6 +89,14 @@ impl Repo {
             Repo::Meta => return None,
         };
         hooks.iter().find(|hook| hook.id == id)
+    }
+
+    pub fn path(&self) -> &Path {
+        match self {
+            Repo::Remote { ref path, .. } => path,
+            Repo::Local { .. } => CWD.deref(),
+            Repo::Meta => todo!(),
+        }
     }
 }
 
@@ -205,7 +212,7 @@ impl Project {
                         builder.combine(&self.config);
                         let mut hook = builder.build();
 
-                        // Prepare hooks with `additional_dependencies` (they need separate repos).
+                        // Prepare hooks with `additional_dependencies` (they need separate environments).
                         if !hook.additional_dependencies.is_empty() {
                             let path = store
                                 .prepare_remote_repo(
@@ -216,8 +223,12 @@ impl Project {
                                 .await
                                 .map_err(Box::new)?;
 
-                            hook = hook.with_path(path)
-                        };
+                            hook = hook.with_path(path);
+                        } else {
+                            // Use the shared repo environment.
+                            let path = hook.repo.path().to_path_buf();
+                            hook = hook.with_path(path);
+                        }
 
                         hooks.push(hook);
                     }
@@ -236,6 +247,10 @@ impl Project {
                                 .await
                                 .map_err(Box::new)?;
 
+                            hook = hook.with_path(path);
+                        } else {
+                            // Use the shared repo environment.
+                            let path = hook.repo.path().to_path_buf();
                             hook = hook.with_path(path);
                         }
                         hooks.push(hook);
@@ -352,7 +367,7 @@ impl HookBuilder {
         let language = self.config.language;
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
         if language.environment_dir().is_none() {
-            if self.config.language_version.is_some() {
+            if self.config.language_version != Some(DEFAULT_VERSION.to_string()) {
                 warn_user!(
                     "Language {} does not need environment, but language_version is set",
                     language
@@ -469,7 +484,7 @@ impl Hook {
 
     /// Get the working directory for the hook.
     pub fn path(&self) -> &Path {
-        self.path.as_ref().unwrap_or_else(|| CWD.deref())
+        self.path.as_deref().unwrap_or_else(|| self.repo.path())
     }
 
     /// Get the environment directory that the hook will be installed to.
@@ -549,8 +564,9 @@ async fn install_hook(hook: &Hook, env_dir: PathBuf, printer: Printer) -> Result
     writeln!(
         printer.stdout(),
         "Installing environment for {}",
-        hook.repo()
+        hook.repo(),
     )?;
+    trace!("Install environment for {} to {}", hook, env_dir.display());
 
     if env_dir.try_exists()? {
         debug!(
@@ -622,7 +638,7 @@ pub async fn run_hooks(
             continue;
         }
 
-        let filenames: Vec<_> = filter_by_include_exclude(
+        let filenames: Vec<_> = filter_filenames(
             filenames.iter().copied(),
             hook.files.as_deref(),
             hook.exclude.as_deref(),
@@ -660,7 +676,7 @@ pub async fn run_hooks(
     }
 }
 
-pub fn filter_by_include_exclude<'a>(
+pub fn filter_filenames<'a>(
     filenames: impl Iterator<Item = &'a String>,
     include: Option<&str>,
     exclude: Option<&str>,
