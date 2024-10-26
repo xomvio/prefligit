@@ -150,8 +150,10 @@ impl Project {
         for (idx, repo) in self.config.repos.iter().enumerate() {
             match repo {
                 ConfigRepo::Remote(repo) => {
-                    let path = store.prepare_remote_repo(repo, &[], printer).await;
-                    tasks.push(async move { (idx, path) });
+                    tasks.push(async move {
+                        let path = store.prepare_remote_repo(repo, &[], printer).await;
+                        (idx, path)
+                    });
                 }
                 ConfigRepo::Local(repo) => {
                     let repo = Repo::local(repo.hooks.clone())?;

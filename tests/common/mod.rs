@@ -32,6 +32,12 @@ impl TestContext {
         let home_dir = ChildPath::new(root.path()).child("home");
         fs_err::create_dir_all(&home_dir).expect("Failed to create test home directory");
 
+        Command::new("git")
+            .arg("init")
+            .current_dir(&temp_dir)
+            .output()
+            .expect("Failed to initialize git repository");
+
         let mut filters = Vec::new();
 
         filters.extend(
@@ -103,7 +109,7 @@ impl TestContext {
     }
 
     pub fn command(&self) -> Command {
-        let bin = assert_cmd::cargo::cargo_bin("pre-commit-rs");
+        let bin = assert_cmd::cargo::cargo_bin("pre-commit");
         let mut cmd = Command::new(bin);
         cmd.current_dir(self.workdir());
         cmd.env("PRE_COMMIT_HOME", &*self.home_dir);

@@ -235,7 +235,7 @@ impl Store {
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
 
-        if deps.is_empty() {
+        if !deps.is_empty() {
             // TODO: use hardlink?
             // Optimization: This is an optimization from the Python pre-commit implementation.
             // Copy already cloned base remote repo.
