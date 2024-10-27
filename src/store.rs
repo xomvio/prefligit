@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use rusqlite::Connection;
 use thiserror::Error;
-use tracing::{debug};
+use tracing::debug;
 
 use crate::config::ConfigRemoteRepo;
 use crate::fs::{copy_dir_all, LockedFile};
@@ -198,11 +198,7 @@ impl Store {
                     .tempdir_in(&self.path)?;
 
                 let path = temp.path().to_string_lossy().to_string();
-                writeln!(
-                    printer.stdout(),
-                    "Preparing local repo {}",
-                    hook.id,
-                )?;
+                writeln!(printer.stdout(), "Preparing local repo {}", hook.id,)?;
                 debug!("Preparing local repo {} at {}", hook.id, path);
                 make_local_repo(LOCAL_NAME, temp.path())?;
                 self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
@@ -267,9 +263,7 @@ impl Store {
             )?;
             debug!(
                 "Cloning {}@{} into {}",
-                repo_config.repo,
-                repo_config.rev,
-                path
+                repo_config.repo, repo_config.rev, path
             );
             clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
         }

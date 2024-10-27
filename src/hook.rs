@@ -1,5 +1,6 @@
-use std::fmt::Display;
+use std::cmp::max;
 use std::fmt::Write;
+use std::fmt::{format, Display};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -9,9 +10,11 @@ use clap::ValueEnum;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::{zip_eq, Itertools};
-use regex::Regex;
+use owo_colors::{OwoColorize, Style};
 use rayon::prelude::*;
+use regex::Regex;
 use thiserror::Error;
+use tokio::process::Command;
 use tracing::{debug, error};
 use url::Url;
 
@@ -20,6 +23,7 @@ use crate::config::{
     Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::CWD;
+use crate::git::get_diff;
 use crate::identify::tags_from_path;
 use crate::languages::DEFAULT_VERSION;
 use crate::printer::Printer;
@@ -642,13 +646,39 @@ impl FileTypeFilter {
     }
 }
 
-async fn run_hook(hook: &Hook, filenames: &[&String], skips: &[String], diff: &[u8], printer: Printer) -> Result<()> {
+const SKIPPED: &str = "Skipped";
+const NO_FILES: &str = "(no files to check)";
+
+fn line(start: &str, cols: usize, end_msg: &str, end_color: Style, postfix: &str) -> String {
+    let dots = cols - start.len() - end_msg.len() - postfix.len() - 1;
+    format!(
+        "{}{}{}{}",
+        start,
+        ".".repeat(dots),
+        postfix,
+        end_msg.style(end_color)
+    )
+}
+
+async fn run_hook(
+    hook: &Hook,
+    filenames: &[&String],
+    skips: &[String],
+    diff: Vec<u8>,
+    cols: usize,
+    verbose: bool,
+    printer: Printer,
+) -> Result<(bool, Vec<u8>)> {
     // TODO: check files diff
     // TODO: group filenames and run in parallel
 
     if skips.contains(&hook.id) || skips.contains(&hook.alias) {
-        writeln!(printer.stdout(), "Skipping hook `{}`", hook)?;
-        return Ok(());
+        writeln!(
+            printer.stdout(),
+            "{}",
+            line(&hook.name, cols, SKIPPED, Style::new().yellow(), "")
+        )?;
+        return Ok((true, diff));
     }
 
     let filenames = filter_filenames(
@@ -670,11 +700,20 @@ async fn run_hook(hook: &Hook, filenames: &[&String], skips: &[String], diff: &[
         .collect();
 
     if filenames.is_empty() && !hook.always_run {
-        writeln!(printer.stdout(), "No files matched for hook `{}`", hook)?;
-        return Ok(());
+        writeln!(
+            printer.stdout(),
+            "{}",
+            line(&hook.name, cols, SKIPPED, Style::new().yellow(), NO_FILES)
+        )?;
+        return Ok((true, diff));
     }
 
-    writeln!(printer.stdout(), "Running hook {}", hook)?;
+    write!(
+        printer.stdout(),
+        "{}{}",
+        &hook.name,
+        ".".repeat(cols - hook.name.len() - 6 - 1)
+    )?;
     let start = std::time::Instant::now();
 
     let result = if hook.pass_filenames {
@@ -683,21 +722,55 @@ async fn run_hook(hook: &Hook, filenames: &[&String], skips: &[String], diff: &[
         hook.language.run(hook, &[]).await
     };
 
+    let duration = start.elapsed();
+
     let new_diff = get_diff()?;
-    if diff != new_diff {
-        // TODO: print diff
+    let file_modified = diff != new_diff;
+    let success = result.is_ok() && !file_modified;
+
+    if success {
+        writeln!(printer.stdout(), "{}", "Passed".green())?;
+    } else {
+        writeln!(printer.stdout(), "{}", "Failed".red())?;
     }
 
-    writeln!(
-        printer.stdout(),
-        "{} completed in {:?}",
-        hook,
-        start.elapsed()
-    )?;
+    if verbose || hook.verbose || !success {
+        writeln!(
+            printer.stdout(),
+            "{}",
+            format!("- hook id: {}", hook.id).dimmed()
+        )?;
+        if verbose || hook.verbose {
+            writeln!(
+                printer.stdout(),
+                "{}",
+                format!("- duration: {:?}s", duration.as_secs()).dimmed()
+            )?;
+        }
+        if result.is_err() {
+            // TODO
+            writeln!(
+                printer.stdout(),
+                "{}",
+                format!("- exit code: {}", 1).dimmed()
+            )?;
+        }
+        if file_modified {
+            writeln!(
+                printer.stdout(),
+                "{}",
+                "- files were modified by this hook".dimmed()
+            )?;
+        }
+        // TODO: output
+    }
 
-    // TODO: check diff
+    Ok((success, new_diff))
+}
 
-    result
+fn calculate_cols(hooks: &[Hook]) -> usize {
+    let name_len = hooks.iter().map(|hook| hook.id.len()).max().unwrap_or(0);
+    max(80, name_len + 3 + NO_FILES.len() + 1 + SKIPPED.len())
 }
 
 pub async fn run_hooks(
@@ -706,37 +779,39 @@ pub async fn run_hooks(
     filenames: Vec<&String>,
     fail_fast: bool,
     show_diff_on_failure: bool,
+    verbose: bool,
     printer: Printer,
 ) -> Result<()> {
+    let cols = calculate_cols(hooks);
     // TODO: progress bar, format output
     let mut success = true;
 
     let mut diff = get_diff()?;
     // hooks must run in serial
     for hook in hooks {
-
         // TODO: handle single hook result
-        let result = run_hook(hook, &filenames, skips, diff, printer).await;
+        let (hook_success, new_diff) =
+            run_hook(hook, &filenames, skips, diff, verbose, printer).await?;
 
-        if let Err(err) = result {
-            success = false;
-            // TODO: print
-            writeln!(printer.stderr(), "Hook failed: {}", err)?;
-            if fail_fast || hook.fail_fast {
-                break;
-            }
+        success |= hook_success;
+        diff = new_diff;
+        if !success && (fail_fast || hook.fail_fast) {
+            break;
         }
     }
 
-    if success {
-        Ok(())
-    } else {
-        if show_diff_on_failure {
-            todo!()
-        }
-        // TODO: print
-        Err(anyhow::anyhow!("Some hooks failed"))
-    }
+    if !success && show_diff_on_failure {
+        writeln!(printer.stdout(), "All changes made by hooks:")?;
+        // TODO: color
+        Command::new("git")
+            .arg("diff")
+            .arg("--no-ext-diff")
+            .arg("--no-pager")
+            .spawn()?
+            .wait()?;
+    };
+
+    Ok(())
 }
 
 pub fn filter_filenames<'a>(

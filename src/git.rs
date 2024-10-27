@@ -124,6 +124,19 @@ pub async fn has_unmerged_paths(path: &Path) -> Result<bool, Error> {
     Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
+pub async fn get_diff() -> Result<Vec<u8>, Error> {
+    let output = git_cmd()?
+        .arg("diff")
+        .arg("--no-ext-diff") // Disable external diff drivers
+        .arg("--no-textconv")
+        .arg("--ignore-submodules")
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(output.stdout)
+}
+
 /// Get the path of the top-level directory of the working tree.
 pub async fn get_root() -> Result<PathBuf, Error> {
     let output = git_cmd()?
