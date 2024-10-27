@@ -65,7 +65,8 @@ impl Python {
             ),
         )?;
 
-        // TODO handle signals
+        // TODO: handle signals
+        // TODO: better error display
         let cmds = shlex::split(&hook.entry).ok_or(anyhow::anyhow!("Failed to parse entry"))?;
         Command::new(&cmds[0])
             .args(&cmds[1..])

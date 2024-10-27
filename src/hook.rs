@@ -10,8 +10,9 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::{zip_eq, Itertools};
 use regex::Regex;
+use rayon::prelude::*;
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error};
 use url::Url;
 
 use crate::config::{
@@ -31,7 +32,7 @@ pub enum Error {
     InvalidUrl(#[from] url::ParseError),
     #[error(transparent)]
     ReadConfig(#[from] config::Error),
-    #[error("Hook not found: {hook} in repo {repo}")]
+    #[error("Hook {hook} in not present in repository {repo}")]
     HookNotFound { hook: String, repo: String },
     #[error(transparent)]
     Store(#[from] Box<crate::store::Error>),
@@ -121,7 +122,7 @@ impl Project {
     /// Load a project configuration from a directory.
     pub fn from_directory(root: PathBuf, config: Option<PathBuf>) -> Result<Self, Error> {
         let config_path = config.unwrap_or_else(|| root.join(CONFIG_FILE));
-        trace!(
+        debug!(
             "Loading project configuration from {}",
             config_path.display()
         );
@@ -569,7 +570,7 @@ async fn install_hook(hook: &Hook, env_dir: PathBuf, printer: Printer) -> Result
         "Installing environment for {}",
         hook.repo(),
     )?;
-    trace!("Install environment for {} to {}", hook, env_dir.display());
+    debug!("Install environment for {} to {}", hook, env_dir.display());
 
     if env_dir.try_exists()? {
         debug!(
@@ -612,11 +613,7 @@ struct FileTypeFilter {
 }
 
 impl FileTypeFilter {
-    fn new(
-        types: &[String],
-        types_or: &[String],
-        exclude_types: &[String],
-    ) -> Self {
+    fn new(types: &[String], types_or: &[String], exclude_types: &[String]) -> Self {
         let all = types.to_vec();
         let any = types_or.to_vec();
         let exclude = exclude_types.to_vec();
@@ -630,7 +627,11 @@ impl FileTypeFilter {
         if !self.any.is_empty() && !self.any.iter().any(|t| file_types.contains(&t.as_str())) {
             return false;
         }
-        if self.exclude.iter().any(|t| file_types.contains(&t.as_str())) {
+        if self
+            .exclude
+            .iter()
+            .any(|t| file_types.contains(&t.as_str()))
+        {
             return false;
         }
         true
@@ -641,16 +642,23 @@ impl FileTypeFilter {
     }
 }
 
-async fn run_hook(hook: &Hook, filenames: &[&String], printer: Printer) -> Result<()> {
+async fn run_hook(hook: &Hook, filenames: &[&String], skips: &[String], diff: &[u8], printer: Printer) -> Result<()> {
     // TODO: check files diff
     // TODO: group filenames and run in parallel
 
+    if skips.contains(&hook.id) || skips.contains(&hook.alias) {
+        writeln!(printer.stdout(), "Skipping hook `{}`", hook)?;
+        return Ok(());
+    }
+
     let filenames = filter_filenames(
+        // TODO: rayon
         filenames.into_iter().copied(),
         hook.files.as_deref(),
         hook.exclude.as_deref(),
     )?;
-    // TODO: classify files in parallel
+
+    // TODO: rayon, classify files in parallel
     let filter = FileTypeFilter::from_hook(hook);
     let filenames: Vec<_> = filenames
         .filter(|&filename| {
@@ -661,9 +669,25 @@ async fn run_hook(hook: &Hook, filenames: &[&String], printer: Printer) -> Resul
         })
         .collect();
 
+    if filenames.is_empty() && !hook.always_run {
+        writeln!(printer.stdout(), "No files matched for hook `{}`", hook)?;
+        return Ok(());
+    }
+
     writeln!(printer.stdout(), "Running hook {}", hook)?;
     let start = std::time::Instant::now();
-    hook.language.run(hook, &filenames).await?;
+
+    let result = if hook.pass_filenames {
+        hook.language.run(hook, &filenames).await
+    } else {
+        hook.language.run(hook, &[]).await
+    };
+
+    let new_diff = get_diff()?;
+    if diff != new_diff {
+        // TODO: print diff
+    }
+
     writeln!(
         printer.stdout(),
         "{} completed in {:?}",
@@ -671,7 +695,9 @@ async fn run_hook(hook: &Hook, filenames: &[&String], printer: Printer) -> Resul
         start.elapsed()
     )?;
 
-    Ok(())
+    // TODO: check diff
+
+    result
 }
 
 pub async fn run_hooks(
@@ -682,38 +708,19 @@ pub async fn run_hooks(
     show_diff_on_failure: bool,
     printer: Printer,
 ) -> Result<()> {
-    // TODO: classify files
-
+    // TODO: progress bar, format output
     let mut success = true;
 
+    let mut diff = get_diff()?;
     // hooks must run in serial
     for hook in hooks {
-        if skips.contains(&hook.id) || skips.contains(&hook.alias) {
-            writeln!(printer.stdout(), "Skipping hook `{}`", hook)?;
-            continue;
-        }
-
-        let filenames: Vec<_> = filter_filenames(
-            filenames.iter().copied(),
-            hook.files.as_deref(),
-            hook.exclude.as_deref(),
-        )?
-        .collect();
-
-        if filenames.is_empty() && !hook.always_run {
-            writeln!(printer.stdout(), "No files matched for hook `{}`", hook)?;
-            continue;
-        }
 
         // TODO: handle single hook result
-        let result = if hook.pass_filenames {
-            run_hook(hook, &filenames, printer).await
-        } else {
-            run_hook(hook, &[], printer).await
-        };
+        let result = run_hook(hook, &filenames, skips, diff, printer).await;
 
         if let Err(err) = result {
             success = false;
+            // TODO: print
             writeln!(printer.stderr(), "Hook failed: {}", err)?;
             if fail_fast || hook.fail_fast {
                 break;
@@ -727,6 +734,7 @@ pub async fn run_hooks(
         if show_diff_on_failure {
             todo!()
         }
+        // TODO: print
         Err(anyhow::anyhow!("Some hooks failed"))
     }
 }
@@ -736,6 +744,7 @@ pub fn filter_filenames<'a>(
     include: Option<&str>,
     exclude: Option<&str>,
 ) -> Result<impl Iterator<Item = &'a String>, Error> {
+    // TODO: normalize path separators
     let include = include.map(|s| Regex::new(s)).transpose()?;
     let exclude = exclude.map(|s| Regex::new(s)).transpose()?;
 

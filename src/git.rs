@@ -57,6 +57,7 @@ fn zsplit(s: &[u8]) -> Vec<String> {
     }
 }
 
+// TODO: improve error display
 pub async fn get_changed_files(old: &str, new: &str) -> Result<Vec<String>, Error> {
     let output = git_cmd()?
         .arg("diff")

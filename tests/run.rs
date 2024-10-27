@@ -125,3 +125,7 @@ fn invalid_hook_id() -> Result<()> {
 
     Ok(())
 }
+
+// TODO: test `skips`
+// TODO: test `files` and `exclude`
+// TODO: test `types`, `types_or`, `exclude_types`

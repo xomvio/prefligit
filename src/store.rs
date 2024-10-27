@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use rusqlite::Connection;
 use thiserror::Error;
-use tracing::trace;
+use tracing::{debug};
 
 use crate::config::ConfigRemoteRepo;
 use crate::fs::{copy_dir_all, LockedFile};
@@ -40,14 +40,14 @@ pub struct Store {
 impl Store {
     pub fn from_settings() -> Result<Self, Error> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
-            trace!(
+            debug!(
                 "Loading store from PRE_COMMIT_HOME: {}",
                 path.to_string_lossy()
             );
             return Ok(Self::from_path(path));
         } else if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
             let path = PathBuf::from(path).join("pre-commit");
-            trace!(
+            debug!(
                 "Loading store from XDG_CACHE_HOME: {}",
                 path.to_string_lossy()
             );
@@ -56,7 +56,7 @@ impl Store {
 
         let home = home::home_dir().ok_or(Error::HomeNotFound)?;
         let path = home.join(".cache").join("pre-commit");
-        trace!("Loading store from ~/.cache: {}", path.display());
+        debug!("Loading store from ~/.cache: {}", path.display());
         Ok(Self::from_path(path))
     }
 
@@ -90,7 +90,7 @@ impl Store {
         // Init the database.
         let db = self.path.join("db.db");
         let conn = if !db.try_exists()? {
-            trace!("Creating database: {}", db.display());
+            debug!("Creating database: {}", db.display());
             let conn = Connection::open(&db)?;
             conn.execute(
                 "CREATE TABLE repos (
@@ -103,7 +103,7 @@ impl Store {
             )?;
             conn
         } else {
-            trace!("Opening database: {}", db.display());
+            debug!("Opening database: {}", db.display());
             Connection::open(&db)?
         };
 
@@ -200,10 +200,10 @@ impl Store {
                 let path = temp.path().to_string_lossy().to_string();
                 writeln!(
                     printer.stdout(),
-                    "Preparing local repo {} at {}",
+                    "Preparing local repo {}",
                     hook.id,
-                    path
                 )?;
+                debug!("Preparing local repo {} at {}", hook.id, path);
                 make_local_repo(LOCAL_NAME, temp.path())?;
                 self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
                 path
@@ -244,22 +244,33 @@ impl Store {
                 .expect("base repo should be cloned before");
             writeln!(
                 printer.stdout(),
-                "Preparing {}@{} with dependencies {} by copying from {} into {}",
+                "Preparing {}@{} with dependencies {}",
+                repo_config.repo,
+                repo_config.rev,
+                deps.join(","),
+            )?;
+            debug!(
+                "Copying {}@{} with dependencies {} by copying from {} into {}",
                 repo_config.repo,
                 repo_config.rev,
                 deps.join(","),
                 base_repo_path,
                 path,
-            )?;
+            );
             copy_dir_all(base_repo_path, &path)?;
         } else {
             writeln!(
                 printer.stdout(),
+                "Cloning {}@{}",
+                repo_config.repo,
+                repo_config.rev
+            )?;
+            debug!(
                 "Cloning {}@{} into {}",
                 repo_config.repo,
                 repo_config.rev,
                 path
-            )?;
+            );
             clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
         }
 

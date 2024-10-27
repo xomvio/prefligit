@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use owo_colors::OwoColorize;
-use tracing::trace;
+use tracing::debug;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
@@ -76,7 +76,7 @@ pub(crate) async fn run(
         .cloned()
         .collect::<Vec<_>>();
 
-    trace!(
+    debug!(
         "Hooks going to run: {:?}",
         non_skipped.iter().map(|h| &h.id).collect::<Vec<_>>()
     );
@@ -85,6 +85,7 @@ pub(crate) async fn run(
 
     let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
     let filenames = filter_filenames(
+        // TODO: rayon
         filenames.iter(),
         project.config().files.as_deref(),
         project.config().exclude.as_deref(),
