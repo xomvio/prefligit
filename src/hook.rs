@@ -605,34 +605,38 @@ pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     Ok(())
 }
 
-struct FileTypeFilter<'a> {
-    all: Vec<&'a str>,
-    any: Vec<&'a str>,
-    exclude: Vec<&'a str>,
+struct FileTypeFilter {
+    all: Vec<String>,
+    any: Vec<String>,
+    exclude: Vec<String>,
 }
 
-impl<'a> FileTypeFilter<'a> {
-    fn new(types: &'a [String], types_or: &'a [String], exclude_types: &'a [String]) -> Self {
-        let all = types.iter().map(|s| s.deref()).collect();
-        let any = types_or.iter().map(|s| s.deref()).collect();
-        let exclude = exclude_types.iter().map(|s| s.deref()).collect();
+impl FileTypeFilter {
+    fn new(
+        types: &[String],
+        types_or: &[String],
+        exclude_types: &[String],
+    ) -> Self {
+        let all = types.to_vec();
+        let any = types_or.to_vec();
+        let exclude = exclude_types.to_vec();
         Self { all, any, exclude }
     }
 
-    fn filter(&self, file_types: Vec<&str>) -> bool {
-        if !self.all.is_empty() && !self.all.iter().all(|t| file_types.contains(t)) {
+    fn filter(&self, file_types: &[&str]) -> bool {
+        if !self.all.is_empty() && !self.all.iter().all(|t| file_types.contains(&t.as_str())) {
             return false;
         }
-        if !self.any.is_empty() && !self.any.iter().any(|t| file_types.contains(t)) {
+        if !self.any.is_empty() && !self.any.iter().any(|t| file_types.contains(&t.as_str())) {
             return false;
         }
-        if self.exclude.iter().any(|t| file_types.contains(t)) {
+        if self.exclude.iter().any(|t| file_types.contains(&t.as_str())) {
             return false;
         }
         true
     }
 
-    fn from_hook(hook: &'a Hook) -> Self {
+    fn from_hook(hook: &Hook) -> Self {
         Self::new(&hook.types, &hook.types_or, &hook.exclude_types)
     }
 }
@@ -653,7 +657,7 @@ async fn run_hook(hook: &Hook, filenames: &[&String], printer: Printer) -> Resul
             let path = Path::new(filename);
             // TODO: log error?
             let file_tags = tags_from_path(path).unwrap_or_default();
-            filter.filter(file_tags)
+            filter.filter(&file_tags)
         })
         .collect();
 
