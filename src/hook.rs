@@ -19,6 +19,7 @@ use crate::config::{
     Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::CWD;
+use crate::identify::tags_from_path;
 use crate::languages::DEFAULT_VERSION;
 use crate::printer::Printer;
 use crate::store::Store;
@@ -604,13 +605,61 @@ pub async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
     Ok(())
 }
 
+struct FileTypeFilter<'a> {
+    all: Vec<&'a str>,
+    any: Vec<&'a str>,
+    exclude: Vec<&'a str>,
+}
+
+impl<'a> FileTypeFilter<'a> {
+    fn new(types: &'a [String], types_or: &'a [String], exclude_types: &'a [String]) -> Self {
+        let all = types.iter().map(|s| s.deref()).collect();
+        let any = types_or.iter().map(|s| s.deref()).collect();
+        let exclude = exclude_types.iter().map(|s| s.deref()).collect();
+        Self { all, any, exclude }
+    }
+
+    fn filter(&self, file_types: Vec<&str>) -> bool {
+        if !self.all.is_empty() && !self.all.iter().all(|t| file_types.contains(t)) {
+            return false;
+        }
+        if !self.any.is_empty() && !self.any.iter().any(|t| file_types.contains(t)) {
+            return false;
+        }
+        if self.exclude.iter().any(|t| file_types.contains(t)) {
+            return false;
+        }
+        true
+    }
+
+    fn from_hook(hook: &'a Hook) -> Self {
+        Self::new(&hook.types, &hook.types_or, &hook.exclude_types)
+    }
+}
+
 async fn run_hook(hook: &Hook, filenames: &[&String], printer: Printer) -> Result<()> {
     // TODO: check files diff
     // TODO: group filenames and run in parallel
 
+    let filenames = filter_filenames(
+        filenames.into_iter().copied(),
+        hook.files.as_deref(),
+        hook.exclude.as_deref(),
+    )?;
+    // TODO: classify files in parallel
+    let filter = FileTypeFilter::from_hook(hook);
+    let filenames: Vec<_> = filenames
+        .filter(|&filename| {
+            let path = Path::new(filename);
+            // TODO: log error?
+            let file_tags = tags_from_path(path).unwrap_or_default();
+            filter.filter(file_tags)
+        })
+        .collect();
+
     writeln!(printer.stdout(), "Running hook {}", hook)?;
     let start = std::time::Instant::now();
-    hook.language.run(hook, filenames).await?;
+    hook.language.run(hook, &filenames).await?;
     writeln!(
         printer.stdout(),
         "{} completed in {:?}",

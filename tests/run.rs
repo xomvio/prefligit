@@ -1,6 +1,7 @@
 use anyhow::Result;
 use assert_cmd::Command;
 use assert_fs::prelude::*;
+
 use crate::common::{cmd_snapshot, TestContext};
 
 mod common;
@@ -23,10 +24,16 @@ fn run_basic() -> Result<()> {
         "#})?;
 
     // Create a repository with some files.
-    context.workdir().child("file.txt").write_str("Hello, world!\n")?;
+    context
+        .workdir()
+        .child("file.txt")
+        .write_str("Hello, world!\n")?;
     context.workdir().child("valid.json").write_str("{}")?;
     context.workdir().child("invalid.json").write_str("{}")?;
-    context.workdir().child("main.py").write_str(r#"print "abc"  "#)?;
+    context
+        .workdir()
+        .child("main.py")
+        .write_str(r#"print "abc"  "#)?;
     Command::new("git")
         .current_dir(context.workdir())
         .arg("add")
