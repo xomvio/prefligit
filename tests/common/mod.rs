@@ -142,6 +142,7 @@ impl TestContext {
     pub fn init_store(&self) -> anyhow::Result<()> {
         let store = pre_commit_rs::Store::from_path(self.cache_dir.join("home"));
         let store = store.init()?;
+        let _lock = store.lock()?;
 
         tokio::runtime::Runtime::new()?.block_on(store.prepare_remote_repo(
             &pre_commit_rs::ConfigRemoteRepo {

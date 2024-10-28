@@ -10,7 +10,7 @@ use tracing::debug;
 use tracing_subscriber::filter::Directive;
 use tracing_subscriber::EnvFilter;
 
-use crate::cli::{Cli, Command, ExitStatus, RunArgs};
+use crate::cli::{Cli, Command, ExitStatus};
 use crate::fs::CWD;
 use crate::git::get_root;
 use crate::printer::Printer;
