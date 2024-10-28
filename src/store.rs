@@ -246,7 +246,7 @@ impl Store {
                 deps.join(","),
             )?;
             debug!(
-                "Copying {}@{} with dependencies {} by copying from {} into {}",
+                "Preparing {}@{} with dependencies {} by copying from {} into {}",
                 repo_config.repo,
                 repo_config.rev,
                 deps.join(","),

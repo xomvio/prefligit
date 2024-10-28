@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use owo_colors::OwoColorize;
-use tracing::{debug, trace};
+use tracing::debug;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
@@ -136,7 +136,7 @@ async fn all_filenames(
     match (from_ref, to_ref) {
         (Some(from_ref), Some(to_ref)) => {
             let files = get_changed_files(&from_ref, &to_ref).await?;
-            trace!(
+            debug!(
                 "Files changed between {} and {}: {}",
                 from_ref,
                 to_ref,
@@ -151,18 +151,18 @@ async fn all_filenames(
             .into_iter()
             .map(|f| f.to_string_lossy().to_string())
             .collect();
-        trace!("Files passed as arguments: {}", files.len());
+        debug!("Files passed as arguments: {}", files.len());
         return Ok(files);
     }
     if all_files {
         let files = get_all_files().await?;
-        trace!("All files in the repo: {}", files.len());
+        debug!("All files in the repo: {}", files.len());
         return Ok(files);
     }
     // if is_in_merge_conflict() {
     //     return get_conflicted_files();
     // }
     let files = get_staged_files().await?;
-    trace!("Staged files: {} {:?}", files.len(), &files);
+    debug!("Staged files: {}", files.len());
     Ok(files)
 }
