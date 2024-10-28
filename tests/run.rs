@@ -152,6 +152,54 @@ fn cjk_hook_name() -> Result<()> {
     Ok(())
 }
 
+/// Test the output format for a hook with a CJK name.
+#[test]
+fn skips() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project()?;
+
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+                    name: 去除行尾空格
+                  - id: end-of-file-fixer
+                  - id: check-json
+            "#
+        })?;
+
+    cmd_snapshot!(context.filters(), context.run().env("SKIP", "end-of-file-fixer"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    去除行尾空格.........................................(no files to check)Skipped
+    fix end of files........................................................Skipped
+    check json...........................................(no files to check)Skipped
+
+    ----- stderr -----
+    "#);
+
+    cmd_snapshot!(context.filters(), context.run().env("SKIP", "trailing-whitespace,end-of-file-fixer"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    去除行尾空格............................................................Skipped
+    fix end of files........................................................Skipped
+    check json...........................................(no files to check)Skipped
+
+    ----- stderr -----
+    "#);
+    Ok(())
+}
+
 // TODO: test `skips`
 // TODO: test `files` and `exclude`
 // TODO: test `types`, `types_or`, `exclude_types`
