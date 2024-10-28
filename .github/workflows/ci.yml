@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@master
+
+  lint:
+    name: "lint"
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Install Rustfmt"
+        run: rustup component add rustfmt
+      - name: "rustfmt"
+        run: cargo fmt --all --check
+
+  cargo-clippy:
+    name: "cargo clippy | ubuntu"
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: "Install Rust toolchain"
+        run: rustup component add clippy
+      - name: "Clippy"
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  cargo-clippy-windows:
+    timeout-minutes: 15
+    runs-on: windows-latest
+    name: "cargo clippy | windows"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Create Dev Drive using ReFS
+        run: ${{ github.workspace }}/.github/workflows/setup-dev-drive.ps1
+
+      # actions/checkout does not let us clone into anywhere outside ${{ github.workspace }}, so we have to copy the clone...
+      - name: Copy Git Repo to Dev Drive
+        run: |
+          Copy-Item -Path "${{ github.workspace }}" -Destination "${{ env.PRE_COMMIT_WORKSPACE }}" -Recurse
+
+      - name: "Install Rust toolchain"
+        run: rustup component add clippy
+
+      - name: "Clippy"
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  cargo-shear:
+    name: "cargo shear"
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall --no-confirm cargo-shear
+      - run: cargo shear
+
+  cargo-test-linux:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    name: "cargo test | ubuntu"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: rui314/setup-mold@v1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: "Install Rust toolchain"
+        run: rustup show
+
+      - name: "Install cargo nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: "Cargo test"
+        run: |
+          cargo nextest run \
+            --workspace \
+            --status-level skip --failure-output immediate-final --no-fail-fast -j 20 --final-status-level slow
+
+  cargo-test-macos:
+    timeout-minutes: 10
+    runs-on: macos-latest
+    name: "cargo test | macos"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: rui314/setup-mold@v1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: "Install Rust toolchain"
+        run: rustup show
+
+      - name: "Install cargo nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: "Cargo test"
+        run: |
+          cargo nextest run \
+            --workspace \
+            --status-level skip --failure-output immediate-final --no-fail-fast -j 12 --final-status-level slow
+
+  cargo-test-windows:
+    timeout-minutes: 15
+    runs-on: windows-latest
+    name: "cargo test | windows"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Dev Drive using ReFS
+        run: ${{ github.workspace }}/.github/workflows/setup-dev-drive.ps1
+
+      # actions/checkout does not let us clone into anywhere outside ${{ github.workspace }}, so we have to copy the clone...
+      - name: Copy Git Repo to Dev Drive
+        run: |
+          Copy-Item -Path "${{ github.workspace }}" -Destination "${{ env.PRE_COMMIT_WORKSPACE }}" -Recurse
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PRE_COMMIT_WORKSPACE }}
+
+      - name: "Install Rust toolchain"
+        working-directory: ${{ env.PRE_COMMIT_WORKSPACE }}
+        run: rustup show
+
+      - name: "Install cargo nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: "Cargo test"
+        working-directory: ${{ env.PRE_COMMIT_WORKSPACE }}
+        run: |
+          cargo nextest run --workspace --status-level skip --failure-output immediate-final --no-fail-fast -j 20 --final-status-level slow

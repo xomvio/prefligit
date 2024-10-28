@@ -60,7 +60,7 @@ impl TestContext {
     }
 
     pub fn test_bucket_dir() -> PathBuf {
-        env::var("PRE_COMMIT_RS_INTERNAL__TEST_DIR")
+        env::var("PRE_COMMIT_INTERNAL__TEST_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| {
                 etcetera::base_strategy::choose_base_strategy()
