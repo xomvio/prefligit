@@ -667,7 +667,7 @@ async fn run_hook(
     filenames: &[&String],
     skips: &[String],
     diff: Vec<u8>,
-    cols: usize,
+    columns: usize,
     verbose: bool,
     printer: Printer,
 ) -> Result<(bool, Vec<u8>)> {
@@ -678,7 +678,7 @@ async fn run_hook(
         writeln!(
             printer.stdout(),
             "{}",
-            line(&hook.name, cols, SKIPPED, Style::new().yellow(), "")
+            line(&hook.name, columns, SKIPPED, Style::new().yellow(), "")
         )?;
         return Ok((true, diff));
     }
@@ -689,7 +689,6 @@ async fn run_hook(
         hook.exclude.as_deref(),
     )?;
 
-    // TODO: rayon, classify files in parallel
     let filter = FileTypeFilter::from_hook(hook);
     let filenames: Vec<_> = filenames
         .filter(|&filename| {
@@ -704,7 +703,7 @@ async fn run_hook(
         writeln!(
             printer.stdout(),
             "{}",
-            line(&hook.name, cols, SKIPPED, Style::new().yellow(), NO_FILES)
+            line(&hook.name, columns, SKIPPED, Style::new().yellow(), NO_FILES)
         )?;
         return Ok((true, diff));
     }
@@ -713,7 +712,7 @@ async fn run_hook(
         printer.stdout(),
         "{}{}",
         &hook.name,
-        ".".repeat(cols - hook.name.width_cjk() - 6 - 1)
+        ".".repeat(columns - hook.name.width_cjk() - 6 - 1)
     )?;
     let start = std::time::Instant::now();
 
@@ -773,7 +772,11 @@ async fn run_hook(
 }
 
 fn calculate_columns(hooks: &[Hook]) -> usize {
-    let name_len = hooks.iter().map(|hook| hook.id.len()).max().unwrap_or(0);
+    let name_len = hooks
+        .iter()
+        .map(|hook| hook.name.width_cjk())
+        .max()
+        .unwrap_or(0);
     max(80, name_len + 3 + NO_FILES.len() + 1 + SKIPPED.len())
 }
 
