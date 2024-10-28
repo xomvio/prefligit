@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::fmt::Display;
-use std::fmt::Write;
+use std::fmt::Write as _;
+use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -715,17 +716,17 @@ async fn run_hook(
     )?;
     let start = std::time::Instant::now();
 
-    let result = if hook.pass_filenames {
-        hook.language.run(hook, &filenames).await
+    let output = if hook.pass_filenames {
+        hook.language.run(hook, &filenames).await?
     } else {
-        hook.language.run(hook, &[]).await
+        hook.language.run(hook, &[]).await?
     };
 
     let duration = start.elapsed();
 
     let new_diff = get_diff().await?;
     let file_modified = diff != new_diff;
-    let success = result.is_ok() && !file_modified;
+    let success = output.status.success() && !file_modified;
 
     if success {
         writeln!(printer.stdout(), "{}", "Passed".green())?;
@@ -746,12 +747,11 @@ async fn run_hook(
                 format!("- duration: {:?}s", duration.as_secs()).dimmed()
             )?;
         }
-        if result.is_err() {
-            // TODO
+        if !output.status.success() {
             writeln!(
                 printer.stdout(),
                 "{}",
-                format!("- exit code: {}", 1).dimmed()
+                format!("- exit code: {}", output.status.code().unwrap_or_default()).dimmed()
             )?;
         }
         if file_modified {
@@ -760,6 +760,11 @@ async fn run_hook(
                 "{}",
                 "- files were modified by this hook".dimmed()
             )?;
+        }
+        if !(output.stdout.is_empty() && output.stderr.is_empty()) {
+            // TODO: write to log file
+            std::io::stdout().write_all(&output.stdout)?;
+            std::io::stderr().write_all(&output.stderr)?;
         }
         // TODO: output
     }

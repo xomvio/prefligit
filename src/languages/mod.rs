@@ -2,6 +2,8 @@ mod node;
 mod python;
 mod system;
 
+use std::process::Output;
+
 use anyhow::Result;
 
 use crate::config::Language;
@@ -79,7 +81,7 @@ impl Language {
         delegate_to_language!(self, async install, hook)
     }
 
-    pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> Result<()> {
+    pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> Result<Output> {
         delegate_to_language!(self, async run, hook, filenames)
     }
 }

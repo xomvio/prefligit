@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Output;
 
 use assert_cmd::output::{OutputError, OutputOkExt};
 use tokio::process::Command;
@@ -54,7 +55,7 @@ impl Python {
         Ok(())
     }
 
-    pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<()> {
+    pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<Output> {
         // Construct the `PATH` environment variable.
         let env = hook.environment_dir().unwrap();
 
@@ -70,7 +71,7 @@ impl Python {
         // TODO: handle signals
         // TODO: better error display
         let cmds = shlex::split(&hook.entry).ok_or(anyhow::anyhow!("Failed to parse entry"))?;
-        Command::new(&cmds[0])
+        let output = Command::new(&cmds[0])
             .args(&cmds[1..])
             .args(&hook.args)
             .args(filenames)
@@ -78,11 +79,9 @@ impl Python {
             .env("PATH", new_path)
             .env_remove("PYTHONHOME")
             .output()
-            .await
-            .map_err(OutputError::with_cause)?
-            .ok()?;
+            .await?;
 
-        Ok(())
+        Ok(output)
     }
 }
 
