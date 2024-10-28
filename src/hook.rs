@@ -17,6 +17,7 @@ use regex::Regex;
 use thiserror::Error;
 use tokio::process::Command;
 use tracing::{debug, error};
+use unicode_width::UnicodeWidthStr;
 use url::Url;
 
 use crate::config::{
@@ -651,7 +652,7 @@ const SKIPPED: &str = "Skipped";
 const NO_FILES: &str = "(no files to check)";
 
 fn line(start: &str, cols: usize, end_msg: &str, end_color: Style, postfix: &str) -> String {
-    let dots = cols - start.len() - end_msg.len() - postfix.len() - 1;
+    let dots = cols - start.width_cjk() - end_msg.len() - postfix.len() - 1;
     format!(
         "{}{}{}{}",
         start,
@@ -712,7 +713,7 @@ async fn run_hook(
         printer.stdout(),
         "{}{}",
         &hook.name,
-        ".".repeat(cols - hook.name.len() - 6 - 1)
+        ".".repeat(cols - hook.name.width_cjk() - 6 - 1)
     )?;
     let start = std::time::Instant::now();
 
