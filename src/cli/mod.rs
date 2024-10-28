@@ -140,7 +140,7 @@ pub(crate) enum Command {
     /// Create hook environments for all hooks used in the config file.
     InstallHooks,
     /// Run hooks.
-    Run(RunArgs),
+    Run(Box<RunArgs>),
     /// Uninstall the pre-commit script.
     Uninstall,
     /// Validate `.pre-commit-config.yaml` files.

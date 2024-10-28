@@ -153,14 +153,14 @@ impl Display for Stage {
 
 impl Stage {
     pub fn operate_on_files(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Stage::PostCheckout
-            | Stage::PostCommit
-            | Stage::PostMerge
-            | Stage::PostRewrite
-            | Stage::PreRebase => false,
-            _ => true,
-        }
+                | Stage::PostCommit
+                | Stage::PostMerge
+                | Stage::PostRewrite
+                | Stage::PreRebase
+        )
     }
 }
 

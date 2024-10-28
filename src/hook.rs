@@ -66,7 +66,7 @@ pub enum Repo {
 impl Repo {
     /// Load the remote repo manifest from the path.
     pub fn remote(url: &str, rev: &str, path: &str) -> Result<Self, Error> {
-        let url = Url::parse(&url)?;
+        let url = Url::parse(url)?;
 
         let path = PathBuf::from(path);
         let manifest = read_manifest(&path.join(MANIFEST_FILE))?;
@@ -212,8 +212,7 @@ impl Project {
                             return Err(Error::HookNotFound {
                                 hook: hook_config.id.clone(),
                                 repo: repo.to_string(),
-                            }
-                            .into());
+                            });
                         };
 
                         let repo = Rc::clone(repo);
@@ -226,7 +225,7 @@ impl Project {
                         if !hook.additional_dependencies.is_empty() {
                             let path = store
                                 .prepare_remote_repo(
-                                    &repo_config,
+                                    repo_config,
                                     &hook.additional_dependencies,
                                     printer,
                                 )
@@ -325,7 +324,7 @@ impl HookBuilder {
             self.config.entry = entry.clone();
         }
         if let Some(language) = &config.language {
-            self.config.language = language.clone();
+            self.config.language = *language;
         }
 
         self
@@ -500,9 +499,7 @@ impl Hook {
     /// Get the environment directory that the hook will be installed to.
     pub fn environment_dir(&self) -> Option<PathBuf> {
         let lang = self.language;
-        let Some(env_dir) = lang.environment_dir() else {
-            return None;
-        };
+        let env_dir = lang.environment_dir()?;
         Some(
             self.path()
                 .join(format!("{}-{}", env_dir, &self.language_version)),
@@ -513,7 +510,7 @@ impl Hook {
         format!(
             "{}-{}-{}-{}",
             self.repo,
-            self.language.to_string(),
+            self.language,
             self.language_version,
             self.additional_dependencies.join(",")
         )
@@ -834,8 +831,8 @@ pub fn filter_filenames<'a>(
     exclude: Option<&str>,
 ) -> Result<impl ParallelIterator<Item = &'a String>, Error> {
     // TODO: normalize path separators
-    let include = include.map(|s| Regex::new(s)).transpose()?;
-    let exclude = exclude.map(|s| Regex::new(s)).transpose()?;
+    let include = include.map(Regex::new).transpose()?;
+    let exclude = exclude.map(Regex::new).transpose()?;
 
     Ok(filenames.filter(move |filename| {
         let filename = filename.as_str();

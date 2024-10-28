@@ -120,6 +120,7 @@ fn get_skips() -> Vec<String> {
 }
 
 /// Get all filenames to run hooks on.
+#[allow(clippy::too_many_arguments)]
 async fn all_filenames(
     hook_stage: Option<Stage>,
     from_ref: Option<String>,
@@ -133,19 +134,17 @@ async fn all_filenames(
     // if hook_stage.is_some_and(|stage| matches!(stage, Stage::PrepareCommitMsg | Stage::CommitMsg)) {
     //     return iter::once(commit_msg_filename.unwrap());
     // }
-    match (from_ref, to_ref) {
-        (Some(from_ref), Some(to_ref)) => {
-            let files = get_changed_files(&from_ref, &to_ref).await?;
-            debug!(
-                "Files changed between {} and {}: {}",
-                from_ref,
-                to_ref,
-                files.len()
-            );
-            return Ok(files);
-        }
-        _ => {}
+    if let (Some(from_ref), Some(to_ref)) = (from_ref, to_ref) {
+        let files = get_changed_files(&from_ref, &to_ref).await?;
+        debug!(
+            "Files changed between {} and {}: {}",
+            from_ref,
+            to_ref,
+            files.len()
+        );
+        return Ok(files);
     }
+
     if !files.is_empty() {
         let files: Vec<_> = files
             .into_iter()

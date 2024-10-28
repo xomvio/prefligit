@@ -131,19 +131,16 @@ impl Store {
             .collect::<Result<_, _>>()?;
 
         // TODO: fix, local repo can also in the store
-        let repos = rows
-            .into_iter()
+        rows.into_iter()
             .map(|(url, rev, path)| Repo::remote(&url, &rev, &path).map_err(Error::Repo))
-            .collect::<Result<Vec<_>, Error>>();
-
-        repos
+            .collect::<Result<Vec<_>, Error>>()
     }
 
     // Append dependencies to the repo name as the key.
     fn repo_name(repo: &str, deps: &[String]) -> String {
         let mut name = repo.to_string();
         if !deps.is_empty() {
-            name.push_str(":");
+            name.push(':');
             name.push_str(&deps.join(","));
         }
         name
@@ -168,7 +165,7 @@ impl Store {
     }
 
     fn insert_repo(&self, repo: &str, rev: &str, path: &str, deps: &[String]) -> Result<(), Error> {
-        let repo_name = Self::repo_name(repo, &deps);
+        let repo_name = Self::repo_name(repo, deps);
 
         let mut stmt = self
             .conn()
@@ -190,10 +187,10 @@ impl Store {
         const LOCAL_REV: &str = "1";
 
         if hook.language.environment_dir().is_none() {
-            return Err(Error::LocalHookNoNeedEnv(hook.id.clone()).into());
+            return Err(Error::LocalHookNoNeedEnv(hook.id.clone()));
         }
 
-        let path = match self.get_repo(LOCAL_NAME, LOCAL_REV, &deps)? {
+        let path = match self.get_repo(LOCAL_NAME, LOCAL_REV, deps)? {
             Some((_, _, path)) => path,
             None => {
                 let temp = tempfile::Builder::new()

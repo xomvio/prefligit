@@ -621,24 +621,18 @@ fn by_interpreter() -> &'static HashMap<&'static str, Vec<&'static str>> {
 }
 
 fn is_type_tag(tag: &str) -> bool {
-    match tag {
-        tags::DIRECTORY | tags::SYMLINK | tags::SOCKET | tags::FILE => true,
-        _ => false,
-    }
+    matches!(
+        tag,
+        tags::DIRECTORY | tags::SYMLINK | tags::SOCKET | tags::FILE
+    )
 }
 
 fn is_mode_tag(tag: &str) -> bool {
-    match tag {
-        tags::EXECUTABLE | tags::NON_EXECUTABLE => true,
-        _ => false,
-    }
+    matches!(tag, tags::EXECUTABLE | tags::NON_EXECUTABLE)
 }
 
 fn is_encoding_tag(tag: &str) -> bool {
-    match tag {
-        tags::TEXT | tags::BINARY => true,
-        _ => false,
-    }
+    matches!(tag, tags::TEXT | tags::BINARY)
 }
 
 pub fn tags_from_path(path: &Path) -> Result<Vec<&str>> {
@@ -681,11 +675,9 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<&str>> {
 
     if let Ok(from_filename) = tags_from_filename(path) {
         tags.extend(from_filename);
-    } else {
-        if executable {
-            if let Ok(shebang) = parse_shebang(path) {
-                tags.extend(tags_from_interpreter(&shebang));
-            }
+    } else if executable {
+        if let Ok(shebang) = parse_shebang(path) {
+            tags.extend(tags_from_interpreter(&shebang));
         }
     }
 
@@ -715,11 +707,11 @@ fn tags_from_filename(filename: &Path) -> Result<Vec<&str>> {
         });
     }
     // # Allow e.g. "Dockerfile.xenial" to match "Dockerfile".
-    filename.split(".").next().map(|name| {
+    if let Some(name) = filename.split(".").next() {
         if let Some(tags) = by_filename().get(name) {
             result.extend(&**tags);
         }
-    });
+    }
 
     if let Some(ext) = ext {
         if let Some(tags) = by_extension().get(ext) {
@@ -758,7 +750,7 @@ fn parse_shebang(path: &Path) -> Result<Vec<String>, ShebangError> {
     }
 
     // Require only printable ASCII
-    if line.bytes().any(|b| b < 0x20 || b > 0x7E) {
+    if line.bytes().any(|b| !(0x20..=0x7E).contains(&b)) {
         return Err(ShebangError::NonPrintableChars);
     }
 
@@ -785,7 +777,7 @@ fn parse_shebang(path: &Path) -> Result<Vec<String>, ShebangError> {
 /// https://github.com/file/file/blob/df74b09b9027676088c797528edcaae5a9ce9ad0/src/encoding.c#L203-L228
 fn is_text_file(path: &Path) -> bool {
     let mut buffer = [0; 1024];
-    let Ok(mut file) = std::fs::File::open(path) else {
+    let Ok(mut file) = fs_err::File::open(path) else {
         return false;
     };
 
@@ -798,7 +790,7 @@ fn is_text_file(path: &Path) -> bool {
 
     let text_chars: Vec<u8> = (0..=255)
         .filter(|&x| {
-            (x >= 0x20 && x <= 0x7E) // Printable ASCII
+            (0x20..=0x7E).contains(&x) // Printable ASCII
                 || x >= 0x80 // High bit set
                 || [7, 8, 9, 10, 11, 12, 13, 27].contains(&x) // Control characters
         })
@@ -815,7 +807,7 @@ mod tests {
 
     #[test]
     fn tags_from_filename() {
-        let tags = super::tags_from_filename(&Path::new("test.py")).unwrap();
+        let tags = super::tags_from_filename(Path::new("test.py")).unwrap();
         assert_eq!(tags, vec!["python", "text"]);
     }
 }
