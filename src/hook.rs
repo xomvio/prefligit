@@ -703,7 +703,13 @@ async fn run_hook(
         writeln!(
             printer.stdout(),
             "{}",
-            line(&hook.name, columns, SKIPPED, Style::new().yellow(), NO_FILES)
+            line(
+                &hook.name,
+                columns,
+                SKIPPED,
+                Style::new().yellow(),
+                NO_FILES
+            )
         )?;
         return Ok((true, diff));
     }
