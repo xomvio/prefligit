@@ -10,9 +10,8 @@ mod common;
 fn run_basic() -> Result<()> {
     let context = TestContext::new();
 
-    context
-        .workdir()
-        .child(".pre-commit-config.yaml")
+    let cwd = context.workdir();
+    cwd.child(".pre-commit-config.yaml")
         .write_str(indoc::indoc! {r#"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -24,18 +23,17 @@ fn run_basic() -> Result<()> {
         "#})?;
 
     // Create a repository with some files.
-    context
-        .workdir()
-        .child("file.txt")
-        .write_str("Hello, world!\n")?;
-    context.workdir().child("valid.json").write_str("{}")?;
-    context.workdir().child("invalid.json").write_str("{}")?;
-    context
-        .workdir()
-        .child("main.py")
-        .write_str(r#"print "abc"  "#)?;
+    cwd.child("file.txt").write_str("Hello, world!\n")?;
+    cwd.child("valid.json").write_str("{}")?;
+    cwd.child("invalid.json").write_str("{}")?;
+    cwd.child("main.py").write_str(r#"print "abc"  "#)?;
     Command::new("git")
-        .current_dir(context.workdir())
+        .current_dir(cwd)
+        .arg("init")
+        .assert()
+        .success();
+    Command::new("git")
+        .current_dir(cwd)
         .arg("add")
         .arg(".")
         .assert()
@@ -89,26 +87,63 @@ fn run_basic() -> Result<()> {
 fn invalid_hook_id() -> Result<()> {
     let context = TestContext::new();
 
+    context.init_project()?;
+
     context
         .workdir()
         .child(".pre-commit-config.yaml")
         .write_str(indoc::indoc! {r#"
             repos:
-              - repo: https://github.com/abravalheri/validate-pyproject
-                rev: v0.20.2
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
                 hooks:
-                  - id: invalid-hook-id
+                  - id: trailing-whitespace
             "#
         })?;
 
     cmd_snapshot!(context.filters(), context.run().arg("invalid-hook-id"), @r#"
     success: false
-    exit_code: 2
+    exit_code: 1
     ----- stdout -----
-    Cloning https://github.com/abravalheri/validate-pyproject@v0.20.2
 
     ----- stderr -----
-    error: Hook invalid-hook-id in not present in repository https://github.com/abravalheri/validate-pyproject@v0.20.2
+    No hook found for id `invalid-hook-id`
+    "#);
+
+    Ok(())
+}
+
+/// Test the output format for a hook with a CJK name.
+#[test]
+fn cjk_hook_name() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project()?;
+
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+                    name: 去除行尾空格
+                  - id: end-of-file-fixer
+                  - id: check-json
+            "#
+        })?;
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    去除行尾空格.........................................(no files to check)Skipped
+    fix end of files.....................................(no files to check)Skipped
+    check json...........................................(no files to check)Skipped
+
+    ----- stderr -----
     "#);
 
     Ok(())

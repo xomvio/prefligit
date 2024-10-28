@@ -4,12 +4,14 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use assert_cmd::assert::OutputAssertExt;
 use assert_fs::fixture::{ChildPath, PathChild};
 use etcetera::BaseStrategy;
 
 pub struct TestContext {
     temp_dir: ChildPath,
     home_dir: ChildPath,
+    cache_dir: ChildPath,
 
     /// Standard filters for this test context.
     filters: Vec<(String, String)>,
@@ -24,6 +26,9 @@ impl TestContext {
         let bucket = Self::test_bucket_dir();
         fs_err::create_dir_all(&bucket).expect("Failed to create test bucket");
 
+        // A persistent cache directory reused across tests.
+        let cache_dir = ChildPath::new(&bucket).child("cache");
+
         let root = tempfile::TempDir::new_in(bucket).expect("Failed to create test root directory");
 
         let temp_dir = ChildPath::new(root.path()).child("temp");
@@ -31,12 +36,6 @@ impl TestContext {
 
         let home_dir = ChildPath::new(root.path()).child("home");
         fs_err::create_dir_all(&home_dir).expect("Failed to create test home directory");
-
-        Command::new("git")
-            .arg("init")
-            .current_dir(&temp_dir)
-            .output()
-            .expect("Failed to initialize git repository");
 
         let mut filters = Vec::new();
 
@@ -54,6 +53,7 @@ impl TestContext {
         Self {
             temp_dir,
             home_dir,
+            cache_dir,
             filters,
             _root: root,
         }
@@ -133,8 +133,51 @@ impl TestContext {
             .collect()
     }
 
+    /// Get the working directory for the test context.
     pub fn workdir(&self) -> &ChildPath {
         &self.temp_dir
+    }
+
+    /// Initialize a store shared across tests.
+    pub fn init_store(&self) -> anyhow::Result<()> {
+        let store = pre_commit_rs::Store::from_path(self.cache_dir.join("home"));
+        let store = store.init()?;
+
+        tokio::runtime::Runtime::new()?.block_on(store.prepare_remote_repo(
+            &pre_commit_rs::ConfigRemoteRepo {
+                repo: "https://github.com/pre-commit/pre-commit-hooks".parse()?,
+                rev: "v5.0.0".to_string(),
+                hooks: vec![],
+            },
+            &[],
+            pre_commit_rs::Printer::Default,
+        ))?;
+
+        pre_commit_rs::fs::copy_dir_all(store.path(), &self.home_dir)?;
+
+        Ok(())
+    }
+
+    /// Initialize a sample project for pre-commit.
+    pub fn init_project(&self) -> anyhow::Result<()> {
+        self.init_store()?;
+
+        // Write some common files.
+
+        Command::new("git")
+            .arg("init")
+            .current_dir(&self.temp_dir)
+            .assert()
+            .success();
+
+        Command::new("git")
+            .arg("add")
+            .arg(".")
+            .current_dir(&self.temp_dir)
+            .assert()
+            .success();
+
+        Ok(())
     }
 }
 

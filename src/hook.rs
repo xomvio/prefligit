@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::fmt::Display;
 use std::fmt::Write as _;
-use std::io::Write;
+use std::io::Write as _;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -765,9 +765,8 @@ async fn run_hook(
         if !(output.stdout.is_empty() && output.stderr.is_empty()) {
             // TODO: write to log file
             std::io::stdout().write_all(&output.stdout)?;
-            std::io::stderr().write_all(&output.stderr)?;
+            std::io::stdout().write_all(&output.stderr)?;
         }
-        // TODO: output
     }
 
     Ok((success, new_diff))

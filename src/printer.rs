@@ -24,7 +24,7 @@ use anstream::{eprint, print};
 use indicatif::ProgressDrawTarget;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Printer {
+pub enum Printer {
     /// A printer that prints to standard streams (e.g., stdout).
     Default,
     /// A printer that suppresses all output.
@@ -37,7 +37,7 @@ pub(crate) enum Printer {
 
 impl Printer {
     /// Return the [`ProgressDrawTarget`] for this printer.
-    pub(crate) fn target(self) -> ProgressDrawTarget {
+    pub fn target(self) -> ProgressDrawTarget {
         match self {
             Self::Default => ProgressDrawTarget::stderr(),
             Self::Quiet => ProgressDrawTarget::hidden(),
@@ -49,7 +49,7 @@ impl Printer {
     }
 
     /// Return the [`Stdout`] for this printer.
-    pub(crate) fn stdout(self) -> Stdout {
+    pub fn stdout(self) -> Stdout {
         match self {
             Self::Default => Stdout::Enabled,
             Self::Quiet => Stdout::Disabled,
@@ -59,7 +59,7 @@ impl Printer {
     }
 
     /// Return the [`Stderr`] for this printer.
-    pub(crate) fn stderr(self) -> Stderr {
+    pub fn stderr(self) -> Stderr {
         match self {
             Self::Default => Stderr::Enabled,
             Self::Quiet => Stderr::Disabled,
@@ -70,7 +70,7 @@ impl Printer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Stdout {
+pub enum Stdout {
     Enabled,
     Disabled,
 }
@@ -92,7 +92,7 @@ impl std::fmt::Write for Stdout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Stderr {
+pub enum Stderr {
     Enabled,
     Disabled,
 }

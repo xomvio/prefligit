@@ -67,6 +67,10 @@ impl Store {
         }
     }
 
+    pub fn path(&self) -> &Path {
+        self.path.as_ref()
+    }
+
     fn conn(&self) -> &Connection {
         self.conn.as_ref().expect("store not initialized")
     }
