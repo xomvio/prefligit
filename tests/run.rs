@@ -42,58 +42,45 @@ fn run_basic() -> Result<()> {
         .success();
 
     cmd_snapshot!(context.filters(), context.run(), @r#"
-    success: false
-    exit_code: 2
+    success: true
+    exit_code: 0
     ----- stdout -----
-    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0 into [HOME]/repoheycBG
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
     Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
-    Running hook trailing-whitespace
-    Running hook end-of-file-fixer
-    Running hook check-json
-
-    ----- stderr -----
-    Hook failed: code=1
-    stdout="Fixing main.py/n"
-    stderr=""
-
-    Hook failed: code=1
-    stdout=```
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing main.py
+    fix end of files.........................................................Failed
+    - hook id: end-of-file-fixer
+    - exit code: 1
+    - files were modified by this hook
     Fixing invalid.json
     Fixing main.py
     Fixing valid.json
-    ```
+    check json...............................................................Passed
 
-    stderr=""
-
-    Hook failed: code=1
-    stdout=```
-    .pre-commit-config.yaml: Failed to json decode (Expecting value: line 1 column 1 (char 0))
-    file.txt: Failed to json decode (Expecting value: line 1 column 1 (char 0))
-    main.py: Failed to json decode (Expecting value: line 1 column 1 (char 0))
-    ```
-
-    stderr=""
-
-    error: Some hooks failed
+    ----- stderr -----
     "#);
 
-    cmd_snapshot!(context.filters(), context.run().arg("trailing-whitespace"), @r###"
+    cmd_snapshot!(context.filters(), context.run().arg("trailing-whitespace"), @r#"
     success: true
     exit_code: 0
     ----- stdout -----
-    Running hook: typos
+    trim trailing whitespace.................................................Passed
 
     ----- stderr -----
-    "###);
+    "#);
 
-    cmd_snapshot!(context.filters(), context.run().arg("typos").arg("--hook-stage").arg("pre-push"), @r###"
-    success: true
-    exit_code: 0
+    cmd_snapshot!(context.filters(), context.run().arg("typos").arg("--hook-stage").arg("pre-push"), @r#"
+    success: false
+    exit_code: 1
     ----- stdout -----
-    Running hook: typos
 
     ----- stderr -----
-    "###);
+    No hook found for id `typos` and stage `pre-push`
+    "#);
 
     Ok(())
 }
@@ -114,14 +101,15 @@ fn invalid_hook_id() -> Result<()> {
             "#
         })?;
 
-    cmd_snapshot!(context.filters(), context.run().arg("invalid-hook-id"), @r###"
+    cmd_snapshot!(context.filters(), context.run().arg("invalid-hook-id"), @r#"
     success: false
     exit_code: 2
     ----- stdout -----
+    Cloning https://github.com/abravalheri/validate-pyproject@v0.20.2
 
     ----- stderr -----
-    error: Hook not found: invalid-hook-id in repo https://github.com/abravalheri/validate-pyproject@v0.20.2
-    "###);
+    error: Hook invalid-hook-id in not present in repository https://github.com/abravalheri/validate-pyproject@v0.20.2
+    "#);
 
     Ok(())
 }

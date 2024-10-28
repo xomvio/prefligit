@@ -67,7 +67,7 @@ ConfigWire {
                     query: None,
                     fragment: None,
                 },
-                rev: "v1.24.6",
+                rev: "v1.26.0",
                 hooks: [
                     ConfigRemoteHook {
                         id: "typos",
@@ -240,7 +240,7 @@ ConfigWire {
                     query: None,
                     fragment: None,
                 },
-                rev: "v0.6.8",
+                rev: "v0.6.9",
                 hooks: [
                     ConfigRemoteHook {
                         id: "ruff-format",
