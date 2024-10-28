@@ -1,5 +1,5 @@
 # This creates a 20GB dev drive, and exports all required environment
-# variables so that rustup, uv and others all use the dev drive as much
+# variables so that rustup, pre-commit and others all use the dev drive as much
 # as possible.
 $Volume = New-VHD -Path C:/pre-commit_dev_drive.vhdx -SizeBytes 20GB |
 					Mount-VHD -Passthru |
@@ -22,5 +22,5 @@ Write-Output `
 	"PRE_COMMIT_INTERNAL__TEST_DIR=$($Tmp)" `
 	"RUSTUP_HOME=$($Drive)/.rustup" `
 	"CARGO_HOME=$($Drive)/.cargo" `
-	"UV_WORKSPACE=$($Drive)/pre-commit" `
+	"PRE_COMMIT_WORKSPACE=$($Drive)/pre-commit" `
 	>> $env:GITHUB_ENV
