@@ -10,7 +10,7 @@ use tracing::debug;
 use tracing_subscriber::filter::Directive;
 use tracing_subscriber::EnvFilter;
 
-use crate::cli::{Cli, Command, ExitStatus};
+use crate::cli::{Cli, Command, ExitStatus, RunArgs};
 use crate::fs::CWD;
 use crate::git::get_root;
 use crate::printer::Printer;
@@ -104,7 +104,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
     debug!("Git root: {:?}", &root);
 
-    let command = cli.command.unwrap_or(Command::Run(cli.run_args));
+    let command = cli.command.unwrap_or(Command::Run(Box::new(cli.run_args)));
     match command {
         Command::Install(args) => {
             cli::install(

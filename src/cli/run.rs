@@ -13,6 +13,7 @@ use crate::hook::{filter_filenames, install_hooks, run_hooks, Project};
 use crate::printer::Printer;
 use crate::store::Store;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
     config: Option<PathBuf>,
     hook_id: Option<String>,

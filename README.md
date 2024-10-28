@@ -1,6 +1,7 @@
 # pre-commit-rs
 
 ![Development Status](https://img.shields.io/badge/Development-Early_Stage-yellowgreen)
+[![CI](https://github.com/j178/pre-commit-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/j178/pre-commit-rs/actions/workflows/ci.yml)
 
 A reimplementation of the [pre-commit](https://pre-commit.com/) tool in Rust, providing a faster and dependency-free alternative.
 It aims to be a drop-in replacement for the original tool while also providing some more advanced features.
