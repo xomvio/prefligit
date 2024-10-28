@@ -102,7 +102,8 @@ pub(crate) struct GlobalArgs {
         global = true,
         long,
         value_enum,
-        default_value_t = ColorChoice::Auto
+        env = "PRE_COMMIT_COLOR",
+        default_value_t = ColorChoice::Auto,
     )]
     pub(crate) color: ColorChoice,
 
