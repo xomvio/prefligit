@@ -1,6 +1,6 @@
 use std::cmp::max;
+use std::fmt::Display;
 use std::fmt::Write;
-use std::fmt::{format, Display};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -11,7 +11,6 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::{zip_eq, Itertools};
 use owo_colors::{OwoColorize, Style};
-use rayon::prelude::*;
 use regex::Regex;
 use thiserror::Error;
 use tokio::process::Command;
@@ -724,7 +723,7 @@ async fn run_hook(
 
     let duration = start.elapsed();
 
-    let new_diff = get_diff()?;
+    let new_diff = get_diff().await?;
     let file_modified = diff != new_diff;
     let success = result.is_ok() && !file_modified;
 
@@ -768,7 +767,7 @@ async fn run_hook(
     Ok((success, new_diff))
 }
 
-fn calculate_cols(hooks: &[Hook]) -> usize {
+fn calculate_columns(hooks: &[Hook]) -> usize {
     let name_len = hooks.iter().map(|hook| hook.id.len()).max().unwrap_or(0);
     max(80, name_len + 3 + NO_FILES.len() + 1 + SKIPPED.len())
 }
@@ -782,16 +781,16 @@ pub async fn run_hooks(
     verbose: bool,
     printer: Printer,
 ) -> Result<()> {
-    let cols = calculate_cols(hooks);
+    let columns = calculate_columns(hooks);
     // TODO: progress bar, format output
     let mut success = true;
 
-    let mut diff = get_diff()?;
+    let mut diff = get_diff().await?;
     // hooks must run in serial
     for hook in hooks {
         // TODO: handle single hook result
         let (hook_success, new_diff) =
-            run_hook(hook, &filenames, skips, diff, verbose, printer).await?;
+            run_hook(hook, &filenames, skips, diff, columns, verbose, printer).await?;
 
         success |= hook_success;
         diff = new_diff;
@@ -808,7 +807,8 @@ pub async fn run_hooks(
             .arg("--no-ext-diff")
             .arg("--no-pager")
             .spawn()?
-            .wait()?;
+            .wait()
+            .await?;
     };
 
     Ok(())
