@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use owo_colors::OwoColorize;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::debug;
 
 use crate::cli::ExitStatus;
@@ -86,8 +87,7 @@ pub(crate) async fn run(
 
     let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
     let filenames = filter_filenames(
-        // TODO: rayon
-        filenames.iter(),
+        filenames.par_iter(),
         project.config().files.as_deref(),
         project.config().exclude.as_deref(),
     )?

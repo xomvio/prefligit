@@ -12,6 +12,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::{zip_eq, Itertools};
 use owo_colors::{OwoColorize, Style};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use thiserror::Error;
 use tokio::process::Command;
@@ -682,8 +683,7 @@ async fn run_hook(
     }
 
     let filenames = filter_filenames(
-        // TODO: rayon
-        filenames.into_iter().copied(),
+        filenames.into_par_iter().copied(),
         hook.files.as_deref(),
         hook.exclude.as_deref(),
     )?;
@@ -820,10 +820,10 @@ pub async fn run_hooks(
 }
 
 pub fn filter_filenames<'a>(
-    filenames: impl Iterator<Item = &'a String>,
+    filenames: impl ParallelIterator<Item = &'a String>,
     include: Option<&str>,
     exclude: Option<&str>,
-) -> Result<impl Iterator<Item = &'a String>, Error> {
+) -> Result<impl ParallelIterator<Item = &'a String>, Error> {
     // TODO: normalize path separators
     let include = include.map(|s| Regex::new(s)).transpose()?;
     let exclude = exclude.map(|s| Regex::new(s)).transpose()?;
