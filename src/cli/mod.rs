@@ -9,9 +9,7 @@ use crate::config::Stage;
 mod install;
 mod run;
 
-#[allow(unused_imports)]
 pub(crate) use install::install;
-#[allow(unused_imports)]
 pub(crate) use run::run;
 
 #[derive(Copy, Clone)]

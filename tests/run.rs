@@ -105,6 +105,7 @@ fn invalid_hook_id() -> Result<()> {
     success: false
     exit_code: 1
     ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
 
     ----- stderr -----
     No hook found for id `invalid-hook-id`
@@ -139,6 +140,8 @@ fn cjk_hook_name() -> Result<()> {
     success: true
     exit_code: 0
     ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
     去除行尾空格.........................................(no files to check)Skipped
     fix end of files.....................................(no files to check)Skipped
     check json...........................................(no files to check)Skipped

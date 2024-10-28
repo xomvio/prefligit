@@ -11,7 +11,6 @@ use etcetera::BaseStrategy;
 pub struct TestContext {
     temp_dir: ChildPath,
     home_dir: ChildPath,
-    cache_dir: ChildPath,
 
     /// Standard filters for this test context.
     filters: Vec<(String, String)>,
@@ -25,9 +24,6 @@ impl TestContext {
     pub fn new() -> Self {
         let bucket = Self::test_bucket_dir();
         fs_err::create_dir_all(&bucket).expect("Failed to create test bucket");
-
-        // A persistent cache directory reused across tests.
-        let cache_dir = ChildPath::new(&bucket).child("cache");
 
         let root = tempfile::TempDir::new_in(bucket).expect("Failed to create test root directory");
 
@@ -53,7 +49,6 @@ impl TestContext {
         Self {
             temp_dir,
             home_dir,
-            cache_dir,
             filters,
             _root: root,
         }
@@ -138,30 +133,25 @@ impl TestContext {
         &self.temp_dir
     }
 
-    /// Initialize a store shared across tests.
-    pub fn init_store(&self) -> anyhow::Result<()> {
-        let store = pre_commit_rs::Store::from_path(self.cache_dir.join("home"));
-        let store = store.init()?;
-        let _lock = store.lock()?;
-
-        tokio::runtime::Runtime::new()?.block_on(store.prepare_remote_repo(
-            &pre_commit_rs::ConfigRemoteRepo {
-                repo: "https://github.com/pre-commit/pre-commit-hooks".parse()?,
-                rev: "v5.0.0".to_string(),
-                hooks: vec![],
-            },
-            &[],
-            pre_commit_rs::Printer::Default,
-        ))?;
-
-        pre_commit_rs::fs::copy_dir_all(store.path(), &self.home_dir)?;
-
-        Ok(())
-    }
-
     /// Initialize a sample project for pre-commit.
     pub fn init_project(&self) -> anyhow::Result<()> {
-        self.init_store()?;
+        // TODO: Clone some repositories used in the tests.
+        // if !self.cache_dir.join("pre-commit-hooks") {
+        //     Command::new("git")
+        //         .arg("clone")
+        //         .arg("https://github.com/pre-commit/pre-commit-hooks")
+        //         .arg("--depth=1")
+        //         .arg("--branch=v5.0.0")
+        //         .current_dir(&self.cache_dir)
+        //         .assert()
+        //         .success();
+        // }
+        //
+        // fs_extra::dir::copy(
+        //     self.cache_dir.join("pre-commit-hooks"),
+        //     self.home_dir.join("pre-commit-hooks"),
+        //     &fs_extra::dir::CopyOptions::new(),
+        // )?;
 
         // Write some common files.
 
