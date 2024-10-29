@@ -1,17 +1,25 @@
-use std::fmt::Write;
-use std::path::PathBuf;
-
-use anyhow::Result;
-use owo_colors::OwoColorize;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use tracing::debug;
+use std::cmp::max;
+use std::fmt::Write as _;
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
-use crate::git::{get_all_files, get_changed_files, get_staged_files};
-use crate::hook::{filter_filenames, install_hooks, run_hooks, Project};
+use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files};
+use crate::hook::{Error, Hook, Project};
+use crate::identify::tags_from_path;
 use crate::printer::Printer;
 use crate::store::Store;
+use anyhow::Result;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
+use itertools::Itertools;
+use owo_colors::{OwoColorize, Style};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use regex::Regex;
+use tokio::process::Command;
+use tracing::{debug, trace};
+use unicode_width::UnicodeWidthStr;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
@@ -165,4 +173,295 @@ async fn all_filenames(
     let files = get_staged_files().await?;
     debug!("Staged files: {}", files.len());
     Ok(files)
+}
+
+async fn install_hook(hook: &Hook, env_dir: PathBuf, printer: Printer) -> Result<()> {
+    writeln!(
+        printer.stdout(),
+        "Installing environment for {}",
+        hook.repo(),
+    )?;
+    debug!("Install environment for {} to {}", hook, env_dir.display());
+
+    if env_dir.try_exists()? {
+        debug!(
+            "Removing existing environment directory {}",
+            env_dir.display()
+        );
+        fs_err::remove_dir_all(&env_dir)?;
+    }
+
+    hook.language.install(hook).await?;
+    hook.mark_installed()?;
+
+    Ok(())
+}
+
+// TODO: progress bar
+async fn install_hooks(hooks: &[Hook], printer: Printer) -> Result<()> {
+    let to_install = hooks
+        .iter()
+        .filter(|&hook| !hook.installed())
+        .unique_by(|&hook| hook.install_key());
+
+    let mut tasks = FuturesUnordered::new();
+    for hook in to_install {
+        if let Some(env_dir) = hook.environment_dir() {
+            tasks.push(async move { install_hook(hook, env_dir, printer).await });
+        }
+    }
+    while let Some(result) = tasks.next().await {
+        result?;
+    }
+
+    Ok(())
+}
+
+struct FileTypeFilter {
+    all: Vec<String>,
+    any: Vec<String>,
+    exclude: Vec<String>,
+}
+
+impl FileTypeFilter {
+    fn new(types: &[String], types_or: &[String], exclude_types: &[String]) -> Self {
+        let all = types.to_vec();
+        let any = types_or.to_vec();
+        let exclude = exclude_types.to_vec();
+        Self { all, any, exclude }
+    }
+
+    fn filter(&self, file_types: &[&str]) -> bool {
+        if !self.all.is_empty() && !self.all.iter().all(|t| file_types.contains(&t.as_str())) {
+            return false;
+        }
+        if !self.any.is_empty() && !self.any.iter().any(|t| file_types.contains(&t.as_str())) {
+            return false;
+        }
+        if self
+            .exclude
+            .iter()
+            .any(|t| file_types.contains(&t.as_str()))
+        {
+            return false;
+        }
+        true
+    }
+
+    fn from_hook(hook: &Hook) -> Self {
+        Self::new(&hook.types, &hook.types_or, &hook.exclude_types)
+    }
+}
+
+const SKIPPED: &str = "Skipped";
+const NO_FILES: &str = "(no files to check)";
+
+fn status_line(start: &str, cols: usize, end_msg: &str, end_color: Style, postfix: &str) -> String {
+    let dots = cols - start.width_cjk() - end_msg.len() - postfix.len() - 1;
+    format!(
+        "{}{}{}{}",
+        start,
+        ".".repeat(dots),
+        postfix,
+        end_msg.style(end_color)
+    )
+}
+
+fn calculate_columns(hooks: &[Hook]) -> usize {
+    let name_len = hooks
+        .iter()
+        .map(|hook| hook.name.width_cjk())
+        .max()
+        .unwrap_or(0);
+    max(80, name_len + 3 + NO_FILES.len() + 1 + SKIPPED.len())
+}
+
+async fn run_hooks(
+    hooks: &[Hook],
+    skips: &[String],
+    filenames: Vec<&String>,
+    fail_fast: bool,
+    show_diff_on_failure: bool,
+    verbose: bool,
+    printer: Printer,
+) -> Result<()> {
+    let columns = calculate_columns(hooks);
+    // TODO: progress bar, format output
+    let mut success = true;
+
+    let mut diff = get_diff().await?;
+    // hooks must run in serial
+    for hook in hooks {
+        // TODO: handle single hook result
+        let (hook_success, new_diff) =
+            run_hook(hook, &filenames, skips, diff, columns, verbose, printer).await?;
+
+        success |= hook_success;
+        diff = new_diff;
+        if !success && (fail_fast || hook.fail_fast) {
+            break;
+        }
+    }
+
+    if !success && show_diff_on_failure {
+        writeln!(printer.stdout(), "All changes made by hooks:")?;
+        // TODO: color
+        Command::new("git")
+            .arg("diff")
+            .arg("--no-ext-diff")
+            .arg("--no-pager")
+            .spawn()?
+            .wait()
+            .await?;
+    };
+
+    Ok(())
+}
+
+async fn run_hook(
+    hook: &Hook,
+    filenames: &[&String],
+    skips: &[String],
+    diff: Vec<u8>,
+    columns: usize,
+    verbose: bool,
+    printer: Printer,
+) -> Result<(bool, Vec<u8>)> {
+    // TODO: check files diff
+    // TODO: group filenames and run in parallel
+
+    if skips.contains(&hook.id) || skips.contains(&hook.alias) {
+        writeln!(
+            printer.stdout(),
+            "{}",
+            status_line(&hook.name, columns, SKIPPED, Style::new().yellow(), "")
+        )?;
+        return Ok((true, diff));
+    }
+
+    let filenames = filter_filenames(
+        filenames.into_par_iter().copied(),
+        hook.files.as_deref(),
+        hook.exclude.as_deref(),
+    )?;
+
+    let filter = FileTypeFilter::from_hook(hook);
+    let filenames: Vec<_> = filenames
+        .filter(|&filename| {
+            let path = Path::new(filename);
+            match tags_from_path(path) {
+                Ok(tags) => filter.filter(&tags),
+                Err(err) => {
+                    trace!("Failed to get tags for {filename}: {err}");
+                    false
+                }
+            }
+        })
+        .collect();
+
+    if filenames.is_empty() && !hook.always_run {
+        writeln!(
+            printer.stdout(),
+            "{}",
+            status_line(
+                &hook.name,
+                columns,
+                SKIPPED,
+                Style::new().yellow(),
+                NO_FILES
+            )
+        )?;
+        return Ok((true, diff));
+    }
+
+    write!(
+        printer.stdout(),
+        "{}{}",
+        &hook.name,
+        ".".repeat(columns - hook.name.width_cjk() - 6 - 1)
+    )?;
+    let start = std::time::Instant::now();
+
+    let output = if hook.pass_filenames {
+        hook.language.run(hook, &filenames).await?
+    } else {
+        hook.language.run(hook, &[]).await?
+    };
+
+    let duration = start.elapsed();
+
+    let new_diff = get_diff().await?;
+    let file_modified = diff != new_diff;
+    let success = output.status.success() && !file_modified;
+
+    if success {
+        writeln!(printer.stdout(), "{}", "Passed".green())?;
+    } else {
+        writeln!(printer.stdout(), "{}", "Failed".red())?;
+    }
+
+    if verbose || hook.verbose || !success {
+        writeln!(
+            printer.stdout(),
+            "{}",
+            format!("- hook id: {}", hook.id).dimmed()
+        )?;
+        if verbose || hook.verbose {
+            writeln!(
+                printer.stdout(),
+                "{}",
+                format!("- duration: {:?}s", duration.as_secs()).dimmed()
+            )?;
+        }
+        if !output.status.success() {
+            writeln!(
+                printer.stdout(),
+                "{}",
+                format!("- exit code: {}", output.status.code().unwrap_or_default()).dimmed()
+            )?;
+        }
+        if file_modified {
+            writeln!(
+                printer.stdout(),
+                "{}",
+                "- files were modified by this hook".dimmed()
+            )?;
+        }
+        if !(output.stdout.is_empty() && output.stderr.is_empty()) {
+            // TODO: write to log file
+            std::io::stdout().write_all(&output.stdout)?;
+            std::io::stdout().write_all(&output.stderr)?;
+        }
+    }
+
+    Ok((success, new_diff))
+}
+
+fn filter_filenames<'a>(
+    filenames: impl ParallelIterator<Item = &'a String>,
+    include: Option<&str>,
+    exclude: Option<&str>,
+) -> Result<impl ParallelIterator<Item = &'a String>, Error> {
+    // TODO: normalize path separators
+    let include = include.map(Regex::new).transpose()?;
+    let exclude = exclude.map(Regex::new).transpose()?;
+
+    Ok(filenames.filter(move |filename| {
+        let filename = filename.as_str();
+        if !include
+            .as_ref()
+            .map(|re| re.is_match(filename))
+            .unwrap_or(true)
+        {
+            return false;
+        }
+        if exclude
+            .as_ref()
+            .map(|re| re.is_match(filename))
+            .unwrap_or(false)
+        {
+            return false;
+        }
+        true
+    }))
 }
