@@ -341,7 +341,13 @@ async fn run_hook(
         writeln!(
             printer.stdout(),
             "{}",
-            status_line(&hook.name, columns, SKIPPED, Style::new().yellow(), "")
+            status_line(
+                &hook.name,
+                columns,
+                SKIPPED,
+                Style::new().black().on_yellow(),
+                "",
+            )
         )?;
         return Ok((true, diff));
     }
@@ -374,8 +380,8 @@ async fn run_hook(
                 &hook.name,
                 columns,
                 SKIPPED,
-                Style::new().yellow(),
-                NO_FILES
+                Style::new().black().on_cyan(),
+                NO_FILES,
             )
         )?;
         return Ok((true, diff));
@@ -402,9 +408,9 @@ async fn run_hook(
     let success = output.status.success() && !file_modified;
 
     if success {
-        writeln!(printer.stdout(), "{}", "Passed".green())?;
+        writeln!(printer.stdout(), "{}", "Passed".on_green())?;
     } else {
-        writeln!(printer.stdout(), "{}", "Failed".red())?;
+        writeln!(printer.stdout(), "{}", "Failed".on_red())?;
     }
 
     if verbose || hook.verbose || !success {
