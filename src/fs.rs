@@ -193,17 +193,17 @@ pub(crate) fn normalize_path(path: String) -> String {
 /// Normalizes a path to use `/` as a separator everywhere, even on platforms
 /// that recognize other characters as separators.
 #[cfg(not(unix))]
-pub(crate) fn normalize_path(mut path: String) -> String {
+pub(crate) fn normalize_path(path: String) -> String {
     use std::path::is_separator;
 
-    let bytes = unsafe { path.as_bytes_mut() };
-    for i in 0..bytes.len() {
-        if bytes[i] == b'/' || !is_separator(char::from(bytes[i])) {
+    let mut bytes = path.into_bytes();
+    for c in &mut bytes {
+        if *c == b'/' || !is_separator(char::from(*c)) {
             continue;
         }
-        bytes[i] = b'/';
+        *c = b'/';
     }
-    path
+    String::from_utf8(bytes).expect("Path is valid UTF-8")
 }
 
 /// Compute a path describing `path` relative to `base`.
