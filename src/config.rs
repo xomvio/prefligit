@@ -152,7 +152,7 @@ impl Display for Stage {
 }
 
 impl Stage {
-    pub fn operate_on_files(&self) -> bool {
+    pub fn operate_on_files(self) -> bool {
         matches!(
             self,
             Stage::PostCheckout
@@ -175,7 +175,7 @@ pub struct ConfigWire {
     /// A list of --hook-types which will be used by default when running pre-commit install.
     /// Default is `[pre-commit]`.
     pub default_install_hook_types: Option<Vec<HookType>>,
-    /// A mapping from language to the default language_version.
+    /// A mapping from language to the default `language_version`.
     pub default_language_version: Option<HashMap<Language, String>>,
     /// A configuration-wide default for the stages property of hooks.
     /// Default to all stages.
@@ -281,7 +281,7 @@ pub struct ConfigRemoteHook {
     pub description: Option<String>,
     /// Run the hook on a specific version of the language.
     /// Default is `default`.
-    /// See https://pre-commit.com/#overriding-language-version.
+    /// See <https://pre-commit.com/#overriding-language-version>.
     pub language_version: Option<String>,
     /// Write the output of the hook to a file when the hook fails or verbose is enabled.
     pub log_file: Option<String>,
@@ -290,7 +290,7 @@ pub struct ConfigRemoteHook {
     pub require_serial: Option<bool>,
     /// Select which git hook(s) to run for.
     /// Default all stages are selected.
-    /// See https://pre-commit.com/#confining-hooks-to-run-at-certain-stages.
+    /// See <https://pre-commit.com/#confining-hooks-to-run-at-certain-stages>.
     pub stages: Option<Vec<Stage>>,
     /// Print the output of the hook even if it passes.
     /// Default is false.
@@ -385,7 +385,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
                     hooks: Vec<ConfigRemoteHook>,
                 }
                 let RemoteRepo { rev, hooks } = RemoteRepo::deserialize(rest)
-                    .map_err(|e| serde::de::Error::custom(format!("Invalid remote repo: {}", e)))?;
+                    .map_err(|e| serde::de::Error::custom(format!("Invalid remote repo: {e}")))?;
 
                 Ok(ConfigRepo::Remote(ConfigRemoteRepo {
                     repo: url,
@@ -400,7 +400,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
                     hooks: Vec<ConfigLocalHook>,
                 }
                 let LocalRepo { hooks } = LocalRepo::deserialize(rest)
-                    .map_err(|e| serde::de::Error::custom(format!("Invalid local repo: {}", e)))?;
+                    .map_err(|e| serde::de::Error::custom(format!("Invalid local repo: {e}")))?;
                 Ok(ConfigRepo::Local(ConfigLocalRepo {
                     repo: "local".to_string(),
                     hooks,
@@ -413,7 +413,7 @@ impl<'de> Deserialize<'de> for ConfigRepo {
                     hooks: Vec<ConfigMetaHook>,
                 }
                 let MetaRepo { hooks } = MetaRepo::deserialize(rest)
-                    .map_err(|e| serde::de::Error::custom(format!("Invalid meta repo: {}", e)))?;
+                    .map_err(|e| serde::de::Error::custom(format!("Invalid meta repo: {e}")))?;
                 Ok(ConfigRepo::Meta(ConfigMetaRepo {
                     repo: "meta".to_string(),
                     hooks,
@@ -479,7 +479,7 @@ pub struct ManifestHook {
     pub description: Option<String>,
     /// Run the hook on a specific version of the language.
     /// Default is `default`.
-    /// See https://pre-commit.com/#overriding-language-version.
+    /// See <https://pre-commit.com/#overriding-language-version>.
     pub language_version: Option<String>,
     /// Write the output of the hook to a file when the hook fails or verbose is enabled.
     pub log_file: Option<String>,
@@ -488,7 +488,7 @@ pub struct ManifestHook {
     pub require_serial: Option<bool>,
     /// Select which git hook(s) to run for.
     /// Default all stages are selected.
-    /// See https://pre-commit.com/#confining-hooks-to-run-at-certain-stages.
+    /// See <https://pre-commit.com/#confining-hooks-to-run-at-certain-stages>.
     pub stages: Option<Vec<Stage>>,
     /// Print the output of the hook even if it passes.
     /// Default is false.
@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn parse_repos() {
         // Local hook should not have `rev`
-        let yaml = indoc::indoc! {r#"
+        let yaml = indoc::indoc! {r"
             repos:
               - repo: local
                 hooks:
@@ -547,7 +547,7 @@ mod tests {
                     name: cargo fmt
                     entry: cargo fmt --
                     language: system
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Ok(
@@ -597,7 +597,7 @@ mod tests {
         )
         "###);
 
-        let yaml = indoc::indoc! {r#"
+        let yaml = indoc::indoc! {r"
             repos:
               - repo: local
                 rev: v1.0.0
@@ -606,7 +606,7 @@ mod tests {
                     name: cargo fmt
                     types:
                       - rust
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Err(
@@ -615,13 +615,13 @@ mod tests {
         "###);
 
         // Remote hook should have `rev`.
-        let yaml = indoc::indoc! {r#"
+        let yaml = indoc::indoc! {r"
             repos:
               - repo: https://github.com/crate-ci/typos
                 rev: v1.0.0
                 hooks:
                   - id: typos
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Ok(
@@ -686,12 +686,12 @@ mod tests {
         )
         "###);
 
-        let yaml = indoc::indoc! {r#"
+        let yaml = indoc::indoc! {r"
             repos:
               - repo: https://github.com/crate-ci/typos
                 hooks:
                   - id: typos
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Err(
@@ -703,14 +703,14 @@ mod tests {
     #[test]
     fn parse_hooks() {
         // Remote hook only `id` is required.
-        let yaml = indoc::indoc! { r#"
+        let yaml = indoc::indoc! { r"
             repos:
               - repo: https://github.com/crate-ci/typos
                 rev: v1.0.0
                 hooks:
                   - name: typos
                     alias: typo
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Err(
@@ -719,7 +719,7 @@ mod tests {
         "###);
 
         // Local hook should have `id`, `name`, and `entry` and `language`.
-        let yaml = indoc::indoc! { r#"
+        let yaml = indoc::indoc! { r"
             repos:
               - repo: local
                 hooks:
@@ -728,7 +728,7 @@ mod tests {
                     entry: cargo fmt
                     types:
                       - rust
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Err(
@@ -736,7 +736,7 @@ mod tests {
         )
         "###);
 
-        let yaml = indoc::indoc! { r#"
+        let yaml = indoc::indoc! { r"
             repos:
               - repo: local
                 hooks:
@@ -744,7 +744,7 @@ mod tests {
                     name: cargo fmt
                     entry: cargo fmt
                     language: rust
-        "#};
+        "};
         let result = serde_yaml::from_str::<ConfigWire>(yaml);
         insta::assert_debug_snapshot!(result, @r###"
         Ok(

@@ -344,7 +344,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["json"]
                     .iter()
                     .chain(&["babelrc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -358,7 +358,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["json"]
                     .iter()
                     .chain(&["bowerrc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -374,7 +374,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["codespellrc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -384,7 +384,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["coveragerc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -395,7 +395,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["json"]
                     .iter()
                     .chain(&["csslintrc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -407,7 +407,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["flake8"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -418,7 +418,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["gitconfig"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -429,14 +429,14 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["gitlint"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
         map.insert(".gitmodules", Cow::Owned(vec!["text", "gitmodules"]));
         map.insert(
             ".hgrc",
-            Cow::Owned(extensions["ini"].iter().chain(&["hgrc"]).cloned().collect()),
+            Cow::Owned(extensions["ini"].iter().chain(&["hgrc"]).copied().collect()),
         );
         map.insert(
             ".isort.cfg",
@@ -444,7 +444,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["isort"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -454,7 +454,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["json"]
                     .iter()
                     .chain(&["jshintrc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -465,14 +465,14 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["json"]
                     .iter()
                     .chain(&["mention-bot"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
         map.insert(".npmignore", Cow::Owned(vec!["text", "npmignore"]));
         map.insert(
             ".pdbrc",
-            Cow::Owned(extensions["py"].iter().chain(&["pdbrc"]).cloned().collect()),
+            Cow::Owned(extensions["py"].iter().chain(&["pdbrc"]).copied().collect()),
         );
         map.insert(
             ".prettierignore",
@@ -484,7 +484,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["pypirc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -495,7 +495,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["yaml"]
                     .iter()
                     .chain(&["salt-lint"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -505,7 +505,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["yaml"]
                     .iter()
                     .chain(&["yamllint"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -522,7 +522,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["toml"]
                     .iter()
                     .chain(&["cargo"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -532,7 +532,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["toml"]
                     .iter()
                     .chain(&["cargo-lock"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -573,7 +573,7 @@ fn by_filename() -> &'static HashMap<&'static str, Cow<'static, Vec<&'static str
                 extensions["ini"]
                     .iter()
                     .chain(&["pylintrc"])
-                    .cloned()
+                    .copied()
                     .collect(),
             ),
         );
@@ -673,9 +673,8 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<&str>> {
         tags.insert(tags::NON_EXECUTABLE);
     }
 
-    if let Ok(from_filename) = tags_from_filename(path) {
-        tags.extend(from_filename);
-    } else if executable {
+    tags.extend(tags_from_filename(path));
+    if executable {
         if let Ok(shebang) = parse_shebang(path) {
             tags.extend(tags_from_interpreter(&shebang));
         }
@@ -692,7 +691,7 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<&str>> {
     Ok(tags.into_iter().collect())
 }
 
-fn tags_from_filename(filename: &Path) -> Result<Vec<&str>> {
+fn tags_from_filename(filename: &Path) -> Vec<&str> {
     let ext = filename.extension().and_then(|ext| ext.to_str());
     let filename = filename
         .file_name()
@@ -707,7 +706,7 @@ fn tags_from_filename(filename: &Path) -> Result<Vec<&str>> {
         });
     }
     // # Allow e.g. "Dockerfile.xenial" to match "Dockerfile".
-    if let Some(name) = filename.split(".").next() {
+    if let Some(name) = filename.split('.').next() {
         if let Some(tags) = by_filename().get(name) {
             result.extend(&**tags);
         }
@@ -719,7 +718,7 @@ fn tags_from_filename(filename: &Path) -> Result<Vec<&str>> {
         }
     }
 
-    Ok(result.into_iter().collect())
+    result.into_iter().collect()
 }
 
 fn tags_from_interpreter(_interpreter: &[String]) -> Vec<&'static str> {
@@ -774,7 +773,7 @@ fn parse_shebang(path: &Path) -> Result<Vec<String>, ShebangError> {
 /// Return whether the first KB of contents seems to be binary.
 ///
 /// This is roughly based on libmagic's binary/text detection:
-/// https://github.com/file/file/blob/df74b09b9027676088c797528edcaae5a9ce9ad0/src/encoding.c#L203-L228
+/// <https://github.com/file/file/blob/df74b09b9027676088c797528edcaae5a9ce9ad0/src/encoding.c#L203-L228>
 fn is_text_file(path: &Path) -> bool {
     let mut buffer = [0; 1024];
     let Ok(mut file) = fs_err::File::open(path) else {
@@ -807,7 +806,7 @@ mod tests {
 
     #[test]
     fn tags_from_filename() {
-        let tags = super::tags_from_filename(Path::new("test.py")).unwrap();
+        let tags = super::tags_from_filename(Path::new("test.py"));
         assert_eq!(tags, vec!["python", "text"]);
     }
 }

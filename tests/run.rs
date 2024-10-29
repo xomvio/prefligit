@@ -12,7 +12,7 @@ fn run_basic() -> Result<()> {
 
     let cwd = context.workdir();
     cwd.child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
                 rev: v5.0.0
@@ -20,7 +20,7 @@ fn run_basic() -> Result<()> {
                   - id: trailing-whitespace
                   - id: end-of-file-fixer
                   - id: check-json
-        "#})?;
+        "})?;
 
     // Create a repository with some files.
     cwd.child("file.txt").write_str("Hello, world!\n")?;
@@ -87,18 +87,18 @@ fn run_basic() -> Result<()> {
 fn invalid_hook_id() -> Result<()> {
     let context = TestContext::new();
 
-    context.init_project()?;
+    context.init_project();
 
     context
         .workdir()
         .child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
                 rev: v5.0.0
                 hooks:
                   - id: trailing-whitespace
-            "#
+            "
         })?;
 
     cmd_snapshot!(context.filters(), context.run().arg("invalid-hook-id"), @r#"
@@ -119,12 +119,12 @@ fn invalid_hook_id() -> Result<()> {
 fn cjk_hook_name() -> Result<()> {
     let context = TestContext::new();
 
-    context.init_project()?;
+    context.init_project();
 
     context
         .workdir()
         .child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
                 rev: v5.0.0
@@ -133,7 +133,7 @@ fn cjk_hook_name() -> Result<()> {
                     name: 去除行尾空格
                   - id: end-of-file-fixer
                   - id: check-json
-            "#
+            "
         })?;
 
     cmd_snapshot!(context.filters(), context.run(), @r#"
@@ -157,12 +157,12 @@ fn cjk_hook_name() -> Result<()> {
 fn skips() -> Result<()> {
     let context = TestContext::new();
 
-    context.init_project()?;
+    context.init_project();
 
     context
         .workdir()
         .child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
                 rev: v5.0.0
@@ -170,7 +170,7 @@ fn skips() -> Result<()> {
                   - id: trailing-whitespace
                   - id: end-of-file-fixer
                   - id: check-json
-            "#
+            "
         })?;
 
     cmd_snapshot!(context.filters(), context.run().env("SKIP", "end-of-file-fixer"), @r#"
@@ -203,7 +203,7 @@ fn skips() -> Result<()> {
 fn files_and_exclude() -> Result<()> {
     let context = TestContext::new();
 
-    context.init_project()?;
+    context.init_project();
 
     let cwd = context.workdir();
     cwd.child("file.txt").write_str("Hello, world!  \n")?;
@@ -215,7 +215,7 @@ fn files_and_exclude() -> Result<()> {
     context
         .workdir()
         .child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             files: file.txt
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -224,7 +224,7 @@ fn files_and_exclude() -> Result<()> {
                   - id: trailing-whitespace
                   - id: end-of-file-fixer
                   - id: check-json
-            "#
+            "
         })?;
 
     Command::new("git")
@@ -256,7 +256,7 @@ fn files_and_exclude() -> Result<()> {
     context
         .workdir()
         .child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
                 rev: v5.0.0
@@ -266,7 +266,7 @@ fn files_and_exclude() -> Result<()> {
                   - id: end-of-file-fixer
                     exclude: (valid.json|file.txt)
                   - id: check-json
-            "#
+            "
         })?;
 
     Command::new("git")

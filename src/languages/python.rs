@@ -122,7 +122,7 @@ async fn patch_cfg_version_info(path: &Path) -> anyhow::Result<()> {
             continue;
         };
         if key.trim() == "version_info" {
-            patched.push_str(&format!("version_info = {}\n", full_version));
+            patched.push_str(&format!("version_info = {full_version}\n"));
         } else {
             patched.push_str(line);
             patched.push('\n');

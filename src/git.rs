@@ -53,7 +53,9 @@ fn zsplit(s: &[u8]) -> Vec<String> {
     if s.is_empty() {
         vec![]
     } else {
-        s.split('\0').map(|s| s.to_string()).collect()
+        s.split('\0')
+            .map(std::string::ToString::to_string)
+            .collect()
     }
 }
 
@@ -65,7 +67,7 @@ pub async fn get_changed_files(old: &str, new: &str) -> Result<Vec<String>, Erro
         .arg("--diff-filter=ACMRT")
         .arg("--no-ext-diff") // Disable external diff drivers
         .arg("-z") // Use NUL as line terminator
-        .arg(format!("{}...{}", old, new))
+        .arg(format!("{old}...{new}"))
         .output()
         .await
         .map_err(OutputError::with_cause)?

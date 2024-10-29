@@ -84,7 +84,7 @@ impl Store {
             self.path.join("README"),
             b"This directory is maintained by the pre-commit project.\nLearn more: https://github.com/pre-commit/pre-commit\n",
         ) {
-            Ok(_) => (),
+            Ok(()) => (),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(err) => return Err(err.into()),
         }
@@ -93,7 +93,10 @@ impl Store {
 
         // Init the database.
         let db = self.path.join("db.db");
-        let conn = if !db.try_exists()? {
+        let conn = if db.try_exists()? {
+            debug!("Opening database: {}", db.display());
+            Connection::open(&db)?
+        } else {
             debug!("Creating database: {}", db.display());
             let conn = Connection::open(&db)?;
             conn.execute(
@@ -106,9 +109,6 @@ impl Store {
                 [],
             )?;
             conn
-        } else {
-            debug!("Opening database: {}", db.display());
-            Connection::open(&db)?
         };
 
         Ok(Self {
@@ -177,7 +177,7 @@ impl Store {
     /// Prepare a local repo for a local hook.
     /// All local hooks same additional dependencies, e.g. no dependencies,
     /// are stored in the same directory (even they use different language).
-    pub async fn prepare_local_repo(
+    pub fn prepare_local_repo(
         &self,
         hook: &Hook,
         deps: &[String],
@@ -190,21 +190,20 @@ impl Store {
             return Err(Error::LocalHookNoNeedEnv(hook.id.clone()));
         }
 
-        let path = match self.get_repo(LOCAL_NAME, LOCAL_REV, deps)? {
-            Some((_, _, path)) => path,
-            None => {
-                let temp = tempfile::Builder::new()
-                    .prefix("repo")
-                    .keep(true)
-                    .tempdir_in(&self.path)?;
+        let path = if let Some((_, _, path)) = self.get_repo(LOCAL_NAME, LOCAL_REV, deps)? {
+            path
+        } else {
+            let temp = tempfile::Builder::new()
+                .prefix("repo")
+                .keep(true)
+                .tempdir_in(&self.path)?;
 
-                let path = temp.path().to_string_lossy().to_string();
-                writeln!(printer.stdout(), "Preparing local repo {}", hook.id,)?;
-                debug!("Preparing local repo {} at {}", hook.id, path);
-                make_local_repo(LOCAL_NAME, temp.path())?;
-                self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
-                path
-            }
+            let path = temp.path().to_string_lossy().to_string();
+            writeln!(printer.stdout(), "Preparing local repo {}", hook.id,)?;
+            debug!("Preparing local repo {} at {}", hook.id, path);
+            make_local_repo(LOCAL_NAME, temp.path())?;
+            self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
+            path
         };
 
         Ok(PathBuf::from(path))
@@ -232,7 +231,19 @@ impl Store {
             .tempdir_in(&self.path)?;
         let path = temp.path().to_string_lossy().to_string();
 
-        if !deps.is_empty() {
+        if deps.is_empty() {
+            writeln!(
+                printer.stdout(),
+                "Cloning {}@{}",
+                repo_config.repo,
+                repo_config.rev
+            )?;
+            debug!(
+                "Cloning {}@{} into {}",
+                repo_config.repo, repo_config.rev, path
+            );
+            clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
+        } else {
             // TODO: use hardlink?
             // Optimization: This is an optimization from the Python pre-commit implementation.
             // Copy already cloned base remote repo.
@@ -255,18 +266,6 @@ impl Store {
                 path,
             );
             copy_dir_all(base_repo_path, &path)?;
-        } else {
-            writeln!(
-                printer.stdout(),
-                "Cloning {}@{}",
-                repo_config.repo,
-                repo_config.rev
-            )?;
-            debug!(
-                "Cloning {}@{} into {}",
-                repo_config.repo, repo_config.rev, path
-            );
-            clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
         }
 
         self.insert_repo(
@@ -294,20 +293,4 @@ fn make_local_repo(_repo: &str, path: &Path) -> Result<(), Error> {
     fs_err::create_dir_all(path)?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use anyhow::Result;
-
-    use super::*;
-
-    #[test]
-    fn test_store() -> Result<()> {
-        let store = Store::from_settings()?.init()?;
-        let repos = store.repos()?;
-        println!("{:#?}", repos);
-
-        Ok(())
-    }
 }

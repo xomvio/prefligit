@@ -134,7 +134,7 @@ impl TestContext {
     }
 
     /// Initialize a sample project for pre-commit.
-    pub fn init_project(&self) -> anyhow::Result<()> {
+    pub fn init_project(&self) {
         // TODO: Clone some repositories used in the tests.
         // if !self.cache_dir.join("pre-commit-hooks") {
         //     Command::new("git")
@@ -167,8 +167,6 @@ impl TestContext {
             .current_dir(&self.temp_dir)
             .assert()
             .success();
-
-        Ok(())
     }
 }
 

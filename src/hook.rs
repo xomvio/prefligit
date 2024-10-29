@@ -2,7 +2,6 @@ use std::cmp::max;
 use std::fmt::Display;
 use std::fmt::Write as _;
 use std::io::Write as _;
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -81,8 +80,8 @@ impl Repo {
     }
 
     /// Construct a local repo from a list of hooks.
-    pub fn local(hooks: Vec<ConfigLocalHook>) -> Result<Self, Error> {
-        Ok(Self::Local { hooks })
+    pub fn local(hooks: Vec<ConfigLocalHook>) -> Self {
+        Self::Local { hooks }
     }
 
     pub fn meta() -> Result<Self, Error> {
@@ -102,7 +101,7 @@ impl Repo {
     pub fn path(&self) -> &Path {
         match self {
             Repo::Remote { ref path, .. } => path,
-            Repo::Local { .. } => CWD.deref(),
+            Repo::Local { .. } => &CWD,
             Repo::Meta => todo!(),
         }
     }
@@ -111,7 +110,7 @@ impl Repo {
 impl Display for Repo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Repo::Remote { url, rev, .. } => write!(f, "{}@{}", url, rev),
+            Repo::Remote { url, rev, .. } => write!(f, "{url}@{rev}"),
             Repo::Local { .. } => write!(f, "local"),
             Repo::Meta => write!(f, "meta"),
         }
@@ -164,7 +163,7 @@ impl Project {
                     });
                 }
                 ConfigRepo::Local(repo) => {
-                    let repo = Repo::local(repo.hooks.clone())?;
+                    let repo = Repo::local(repo.hooks.clone());
                     repos.push((idx, Rc::new(repo)));
                 }
                 ConfigRepo::Meta(_) => {
@@ -221,8 +220,12 @@ impl Project {
                         builder.combine(&self.config);
                         let mut hook = builder.build();
 
-                        // Prepare hooks with `additional_dependencies` (they need separate environments).
-                        if !hook.additional_dependencies.is_empty() {
+                        if hook.additional_dependencies.is_empty() {
+                            // Use the shared repo environment.
+                            let path = hook.repo.path().to_path_buf();
+                            hook = hook.with_path(path);
+                        } else {
+                            // Prepare hooks with `additional_dependencies` (they need separate environments).
                             let path = store
                                 .prepare_remote_repo(
                                     repo_config,
@@ -232,10 +235,6 @@ impl Project {
                                 .await
                                 .map_err(Box::new)?;
 
-                            hook = hook.with_path(path);
-                        } else {
-                            // Use the shared repo environment.
-                            let path = hook.repo.path().to_path_buf();
                             hook = hook.with_path(path);
                         }
 
@@ -253,7 +252,6 @@ impl Project {
                         if hook.language.environment_dir().is_some() {
                             let path = store
                                 .prepare_local_repo(&hook, &hook.additional_dependencies, printer)
-                                .await
                                 .map_err(Box::new)?;
 
                             hook = hook.with_path(path);
@@ -291,7 +289,7 @@ impl HookBuilder {
             ($($field:ident),* $(,)?) => {
                 $(
                 if config.$field.is_some() {
-                    self.config.$field = config.$field.clone();
+                    self.config.$field.clone_from(&config.$field);
                 }
                 )*
             };
@@ -318,13 +316,13 @@ impl HookBuilder {
         );
 
         if let Some(name) = &config.name {
-            self.config.name = name.clone();
+            self.config.name.clone_from(name);
         }
         if let Some(entry) = &config.entry {
-            self.config.entry = entry.clone();
+            self.config.entry.clone_from(entry);
         }
         if let Some(language) = &config.language {
-            self.config.language = *language;
+            self.config.language.clone_from(language);
         }
 
         self
@@ -337,14 +335,14 @@ impl HookBuilder {
             self.config.language_version = config
                 .default_language_version
                 .as_ref()
-                .and_then(|v| v.get(&language).cloned())
+                .and_then(|v| v.get(&language).cloned());
         }
         if self.config.language_version.is_none() {
             self.config.language_version = Some(language.default_version().to_string());
         }
 
         if self.config.stages.is_none() {
-            self.config.stages = config.default_stages.clone();
+            self.config.stages.clone_from(&config.default_stages);
         }
     }
 
@@ -353,7 +351,7 @@ impl HookBuilder {
         self.config
             .language_version
             .get_or_insert(DEFAULT_VERSION.to_string());
-        self.config.alias.get_or_insert("".to_string());
+        self.config.alias.get_or_insert(String::new());
         self.config.args.get_or_insert(Vec::new());
         self.config.types.get_or_insert(vec!["file".to_string()]);
         self.config.types_or.get_or_insert(Vec::new());
@@ -432,6 +430,7 @@ impl HookBuilder {
     }
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct Hook {
     repo: Rc<Repo>,
