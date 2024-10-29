@@ -16,6 +16,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
+use crate::fs::normalize_path;
 use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files};
 use crate::hook::{Hook, Project};
 use crate::identify::tags_from_path;
@@ -97,7 +98,7 @@ pub(crate) async fn run(
 
     let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
     let filenames = filter_filenames(
-        filenames.par_iter(),
+        filenames.par_iter().map(normalize_path),
         project.config().files.as_deref(),
         project.config().exclude.as_deref(),
     )?

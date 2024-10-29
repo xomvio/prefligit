@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -180,4 +181,27 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Re
         }
     }
     Ok(())
+}
+
+/// Normalizes a path to use `/` as a separator everywhere, even on platforms
+/// that recognize other characters as separators.
+#[cfg(unix)]
+pub(crate) fn normalize_path(path: Cow<'_, [u8]>) -> Cow<'_, [u8]> {
+    // UNIX only uses /, so we're good.
+    path
+}
+
+/// Normalizes a path to use `/` as a separator everywhere, even on platforms
+/// that recognize other characters as separators.
+#[cfg(not(unix))]
+pub(crate) fn normalize_path(mut path: Cow<[u8]>) -> Cow<[u8]> {
+    use std::path::is_separator;
+
+    for i in 0..path.len() {
+        if path[i] == b'/' || !is_separator(char::from(path[i])) {
+            continue;
+        }
+        path.to_mut()[i] = b'/';
+    }
+    path
 }
