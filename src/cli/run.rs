@@ -96,9 +96,14 @@ pub(crate) async fn run(
     install_hooks(&non_skipped, printer).await?;
     drop(lock);
 
-    let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
+    let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files)
+        .await?
+        .into_iter()
+        .map(normalize_path)
+        .collect::<Vec<_>>();
+
     let filenames = filter_filenames(
-        filenames.par_iter().map(normalize_path),
+        filenames.par_iter(),
         project.config().files.as_deref(),
         project.config().exclude.as_deref(),
     )?
