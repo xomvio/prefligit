@@ -523,35 +523,8 @@ impl Hook {
         };
 
         let state_file_v2 = env.join(".install_state_v2");
-        let state_file_v1 = env.join(".install_state_v1");
-
-        if state_file_v2.exists() {
-            return true;
-        };
-
-        let state_v1 = match fs_err::read_to_string(&state_file_v1) {
-            Ok(state) => state,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return false,
-            Err(err) => {
-                error!("Failed to read install state file: {}", err);
-                return false;
-            }
-        };
-
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "snake_case")]
-        struct StateV1 {
-            additional_dependencies: Vec<String>,
-        }
-        let state_v1: StateV1 = match serde_json::from_str(&state_v1) {
-            Ok(state) => state,
-            Err(err) => {
-                error!("Failed to parse install state file: {}", err);
-                return false;
-            }
-        };
-
-        state_v1.additional_dependencies == self.additional_dependencies
+        state_file_v2.exists()
+        // Drop support for state file v1.
     }
 
     /// Write a state file to mark the hook as installed.
