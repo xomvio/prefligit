@@ -26,10 +26,10 @@ use crate::config::{
 use crate::fs::CWD;
 use crate::git::get_diff;
 use crate::identify::tags_from_path;
-use crate::languages::DEFAULT_VERSION;
+use crate::languages::{Language, DEFAULT_VERSION};
 use crate::printer::Printer;
 use crate::store::Store;
-use crate::{languages, warn_user};
+use crate::warn_user;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -338,11 +338,8 @@ impl HookBuilder {
                 .and_then(|v| v.get(&language).cloned());
         }
         if self.config.language_version.is_none() {
-            self.config.language_version = Some(
-                languages::Language::from(language)
-                    .default_version()
-                    .to_string(),
-            );
+            self.config.language_version =
+                Some(Language::from(language).default_version().to_string());
         }
 
         if self.config.stages.is_none() {
@@ -375,7 +372,7 @@ impl HookBuilder {
 
     /// Check the hook configuration.
     fn check(&self) {
-        let language = languages::Language::from(self.config.language);
+        let language = Language::from(self.config.language);
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
         if language.environment_dir().is_none() {
             if self.config.language_version != Some(DEFAULT_VERSION.to_string()) {
@@ -443,7 +440,7 @@ pub struct Hook {
     pub id: String,
     pub name: String,
     pub entry: String,
-    pub language: languages::Language,
+    pub language: Language,
     pub alias: String,
     pub files: Option<String>,
     pub exclude: Option<String>,
