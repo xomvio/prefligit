@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::cli::ExitStatus;
 use crate::config::Stage;
 use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files};
-use crate::hook::{Error, Hook, Project};
+use crate::hook::{Hook, Project};
 use crate::identify::tags_from_path;
 use crate::printer::Printer;
 use crate::store::Store;
@@ -328,7 +328,7 @@ async fn run_hook(
     printer: Printer,
 ) -> Result<(bool, Vec<u8>)> {
     // TODO: check files diff
-    // TODO: group filenames and run in parallel
+    // TODO: group filenames and run in parallel, handle require_serial
 
     if skips.contains(&hook.id) || skips.contains(&hook.alias) {
         writeln!(
@@ -441,7 +441,7 @@ fn filter_filenames<'a>(
     filenames: impl ParallelIterator<Item = &'a String>,
     include: Option<&str>,
     exclude: Option<&str>,
-) -> Result<impl ParallelIterator<Item = &'a String>, Error> {
+) -> Result<impl ParallelIterator<Item = &'a String>, regex::Error> {
     // TODO: normalize path separators
     let include = include.map(Regex::new).transpose()?;
     let exclude = exclude.map(Regex::new).transpose()?;

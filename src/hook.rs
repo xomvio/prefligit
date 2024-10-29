@@ -33,8 +33,6 @@ pub enum Error {
     Store(#[from] Box<crate::store::Error>),
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Regex(#[from] regex::Error),
 }
 
 #[derive(Debug, Clone)]
