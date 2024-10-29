@@ -1,7 +1,3 @@
-mod node;
-mod python;
-mod system;
-
 use std::fmt::{Debug, Display};
 use std::process::Output;
 
@@ -9,6 +5,10 @@ use anyhow::Result;
 
 use crate::config;
 use crate::hook::Hook;
+
+mod node;
+mod python;
+mod system;
 
 pub const DEFAULT_VERSION: &str = "default";
 

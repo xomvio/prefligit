@@ -1,7 +1,8 @@
+use std::process::Output;
+
 use crate::config;
 use crate::hook::Hook;
 use crate::languages::{LanguageImpl, DEFAULT_VERSION};
-use std::process::Output;
 
 #[derive(Debug, Copy, Clone)]
 pub struct System;

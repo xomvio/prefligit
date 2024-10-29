@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
+use assert_cmd::output::{OutputError, OutputOkExt};
+use tokio::process::Command;
+
 use crate::config;
 use crate::hook::Hook;
 use crate::languages::LanguageImpl;
-use assert_cmd::output::{OutputError, OutputOkExt};
-use tokio::process::Command;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Python;

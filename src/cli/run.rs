@@ -3,13 +3,6 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use crate::cli::ExitStatus;
-use crate::config::Stage;
-use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files};
-use crate::hook::{Hook, Project};
-use crate::identify::tags_from_path;
-use crate::printer::Printer;
-use crate::store::Store;
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -20,6 +13,14 @@ use regex::Regex;
 use tokio::process::Command;
 use tracing::{debug, trace};
 use unicode_width::UnicodeWidthStr;
+
+use crate::cli::ExitStatus;
+use crate::config::Stage;
+use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files};
+use crate::hook::{Hook, Project};
+use crate::identify::tags_from_path;
+use crate::printer::Printer;
+use crate::store::Store;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
