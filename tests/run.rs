@@ -199,6 +199,7 @@ fn skips() -> Result<()> {
     Ok(())
 }
 
+/// Test global `files`, `exclude`, and hook level `files`, `exclude`.
 #[test]
 fn files_and_exclude() -> Result<()> {
     let context = TestContext::new();
@@ -264,7 +265,7 @@ fn files_and_exclude() -> Result<()> {
                   - id: trailing-whitespace
                     files: valid.json
                   - id: end-of-file-fixer
-                    exclude: (valid.json|file.txt)
+                    exclude: (valid.json|main.py)
                   - id: check-json
             "
         })?;
@@ -285,11 +286,7 @@ fn files_and_exclude() -> Result<()> {
     - exit code: 1
     - files were modified by this hook
     Fixing valid.json
-    fix end of files.........................................................Failed
-    - hook id: end-of-file-fixer
-    - exit code: 1
-    - files were modified by this hook
-    Fixing main.py
+    fix end of files.........................................................Passed
     check json...............................................................Passed
 
     ----- stderr -----
@@ -298,4 +295,71 @@ fn files_and_exclude() -> Result<()> {
     Ok(())
 }
 
-// TODO: test `types`, `types_or`, `exclude_types`
+/// Test selecting files by type, `types`, `types_or`, and `exclude_types`.
+#[test]
+fn file_types() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project();
+
+    let cwd = context.workdir();
+    cwd.child("file.txt").write_str("Hello, world!  ")?;
+    cwd.child("json.json").write_str("{}\n  ")?;
+    cwd.child("main.py").write_str(r#"print "abc"  "#)?;
+
+    // Global files and exclude.
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+                    types: [ "json" ]
+                  - id: trailing-whitespace
+                    types_or: [ "json", "python" ]
+                  - id: trailing-whitespace
+                    exclude_types: [ "json" ]
+                  - id: trailing-whitespace
+                    types: [ "json" ]
+                    exclude_types: [ "json" ]
+            "#
+        })?;
+
+    Command::new("git")
+        .arg("add")
+        .arg(".")
+        .current_dir(cwd)
+        .assert()
+        .success();
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing json.json
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing main.py
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing file.txt
+    trim trailing whitespace.............................(no files to check)Skipped
+
+    ----- stderr -----
+    "#);
+
+    Ok(())
+}

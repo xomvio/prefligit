@@ -15,7 +15,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use thiserror::Error;
 use tokio::process::Command;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 use unicode_width::UnicodeWidthStr;
 use url::Url;
 
@@ -662,9 +662,13 @@ async fn run_hook(
     let filenames: Vec<_> = filenames
         .filter(|&filename| {
             let path = Path::new(filename);
-            // TODO: log error?
-            let file_tags = tags_from_path(path).unwrap_or_default();
-            filter.filter(&file_tags)
+            match tags_from_path(path) {
+                Ok(tags) => filter.filter(&tags),
+                Err(err) => {
+                    trace!("Failed to get tags for {filename}: {err}");
+                    false
+                }
+            }
         })
         .collect();
 

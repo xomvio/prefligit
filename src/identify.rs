@@ -808,5 +808,7 @@ mod tests {
     fn tags_from_filename() {
         let tags = super::tags_from_filename(Path::new("test.py"));
         assert_eq!(tags, vec!["python", "text"]);
+        let tags = super::tags_from_filename(Path::new("data.json"));
+        assert_eq!(tags, vec!["json", "text"]);
     }
 }
