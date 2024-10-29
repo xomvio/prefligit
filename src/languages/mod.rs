@@ -2,86 +2,116 @@ mod node;
 mod python;
 mod system;
 
+use std::fmt::{Debug, Display};
 use std::process::Output;
 
 use anyhow::Result;
 
-use crate::config::Language;
+use crate::config;
 use crate::hook::Hook;
 
 pub const DEFAULT_VERSION: &str = "default";
 
-macro_rules! delegate_to_language {
-    ( $lang:ident, $func:ident $(, $param:ident )* ) => {
-        match $lang {
-            // Self::Conda => crate::languages::Conda.$func($($param),*),
-            // Self::Coursier => crate::languages::Coursier.$func($($param),*),
-            // Self::Dart => crate::languages::Dart.$func($($param),*),
-            // Self::Docker => crate::languages::Docker.$func($($param),*),
-            // Self::DockerImage => crate::languages::DockerImage.$func($($param),*),
-            // Self::Dotnet => crate::languages::Dotnet.$func($($param),*),
-            // Self::Fail => crate::languages::Fail.$func($($param),*),
-            // Self::Golang => crate::languages::Golang.$func($($param),*),
-            // Self::Haskell => crate::languages::Haskell.$func($($param),*),
-            // Self::Lua => crate::languages::Lua.$func($($param),*),
-            Language::Node => node::Node.$func($($param),*),
-            // Self::Perl => crate::languages::Perl.$func($($param),*),
-            Language::Python => python::Python.$func($($param),*),
-            // Self::R => crate::languages::R.$func($($param),*),
-            // Self::Ruby => crate::languages::Ruby.$func($($param),*),
-            // Self::Rust => crate::languages::Rust.$func($($param),*),
-            // Self::Swift => crate::languages::Swift.$func($($param),*),
-            // Self::Pygrep => crate::languages::Pygrep.$func($($param),*),
-            // Self::Script => crate::languages::Script.$func($($param),*),
-            Language::System => system::System.$func($($param),*),
-            _ => unimplemented!(),
+trait LanguageImpl {
+    fn name(&self) -> config::Language;
+    fn default_version(&self) -> &str;
+    fn environment_dir(&self) -> Option<&str>;
+    async fn install(&self, hook: &Hook) -> Result<()>;
+    async fn check_health(&self) -> Result<()>;
+    async fn run(&self, hook: &Hook, filenames: &[&String]) -> Result<Output>;
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Language {
+    Python(python::Python),
+    Node(node::Node),
+    System(system::System),
+}
+
+impl From<config::Language> for Language {
+    fn from(language: config::Language) -> Self {
+        match language {
+            // config::Language::Conda => Language::Conda,
+            // config::Language::Coursier => Language::Coursier,
+            // config::Language::Dart => Language::Dart,
+            // config::Language::Docker => Language::Docker,
+            // config::Language::DockerImage => Language::DockerImage,
+            // config::Language::Dotnet => Language::Dotnet,
+            // config::Language::Fail => Language::Fail,
+            // config::Language::Golang => Language::Golang,
+            // config::Language::Haskell => Language::Haskell,
+            // config::Language::Lua => Language::Lua,
+            config::Language::Node => Language::Node(node::Node),
+            // config::Language::Perl => Language::Perl,
+            config::Language::Python => Language::Python(python::Python),
+            // config::Language::R => Language::R,
+            // config::Language::Ruby => Language::Ruby,
+            // config::Language::Rust => Language::Rust,
+            // config::Language::Swift => Language::Swift,
+            // config::Language::Pygrep => Language::Pygrep,
+            // config::Language::Script => Language::Script,
+            config::Language::System => Language::System(system::System),
+            _ => todo!("Not implemented yet"),
         }
-    };
-    ( $lang:ident, async $func:ident $(, $param:ident )* ) => {
-        match $lang {
-            // Self::Conda => crate::languages::Conda.$func($($param),*),
-            // Self::Coursier => crate::languages::Coursier.$func($($param),*),
-            // Self::Dart => crate::languages::Dart.$func($($param),*),
-            // Self::Docker => crate::languages::Docker.$func($($param),*),
-            // Self::DockerImage => crate::languages::DockerImage.$func($($param),*),
-            // Self::Dotnet => crate::languages::Dotnet.$func($($param),*),
-            // Self::Fail => crate::languages::Fail.$func($($param),*),
-            // Self::Golang => crate::languages::Golang.$func($($param),*),
-            // Self::Haskell => crate::languages::Haskell.$func($($param),*),
-            // Self::Lua => crate::languages::Lua.$func($($param),*),
-            Language::Node => node::Node.$func($($param),*).await,
-            // Self::Perl => crate::languages::Perl.$func($($param),*),
-            Language::Python => python::Python.$func($($param),*).await,
-            // Self::R => crate::languages::R.$func($($param),*),
-            // Self::Ruby => crate::languages::Ruby.$func($($param),*),
-            // Self::Rust => crate::languages::Rust.$func($($param),*),
-            // Self::Swift => crate::languages::Swift.$func($($param),*),
-            // Self::Pygrep => crate::languages::Pygrep.$func($($param),*),
-            // Self::Script => crate::languages::Script.$func($($param),*),
-            Language::System => system::System.$func($($param),*).await,
-            _ => unimplemented!(),
+    }
+}
+
+impl Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Python(python) => python.fmt(f),
+            Self::Node(node) => node.fmt(f),
+            Self::System(system) => system.fmt(f),
         }
     }
 }
 
 impl Language {
-    pub fn name(&self) -> &str {
-        delegate_to_language!(self, name)
+    pub fn name(self) -> config::Language {
+        match self {
+            Self::Python(python) => python.name(),
+            Self::Node(node) => node.name(),
+            Self::System(system) => system.name(),
+        }
     }
 
     pub fn default_version(&self) -> &str {
-        delegate_to_language!(self, default_version)
+        match self {
+            Self::Python(python) => python.default_version(),
+            Self::Node(node) => node.default_version(),
+            Self::System(system) => system.default_version(),
+        }
     }
 
     pub fn environment_dir(&self) -> Option<&str> {
-        delegate_to_language!(self, environment_dir)
+        match self {
+            Self::Python(python) => python.environment_dir(),
+            Self::Node(node) => node.environment_dir(),
+            Self::System(system) => system.environment_dir(),
+        }
     }
 
     pub async fn install(&self, hook: &Hook) -> Result<()> {
-        delegate_to_language!(self, async install, hook)
+        match self {
+            Self::Python(python) => python.install(hook).await,
+            Self::Node(node) => node.install(hook).await,
+            Self::System(system) => system.install(hook).await,
+        }
+    }
+
+    pub async fn check_health(&self) -> Result<()> {
+        match self {
+            Self::Python(python) => python.check_health().await,
+            Self::Node(node) => node.check_health().await,
+            Self::System(system) => system.check_health().await,
+        }
     }
 
     pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> Result<Output> {
-        delegate_to_language!(self, async run, hook, filenames)
+        match self {
+            Self::Python(python) => python.run(hook, filenames).await,
+            Self::Node(node) => node.run(hook, filenames).await,
+            Self::System(system) => system.run(hook, filenames).await,
+        }
     }
 }

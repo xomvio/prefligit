@@ -1,28 +1,33 @@
+use crate::config;
+use crate::hook::Hook;
+use crate::languages::{LanguageImpl, DEFAULT_VERSION};
 use std::process::Output;
 
-use crate::hook::Hook;
-use crate::languages::DEFAULT_VERSION;
-
+#[derive(Debug, Copy, Clone)]
 pub struct System;
 
-impl System {
-    pub fn name(&self) -> &str {
-        "System"
+impl LanguageImpl for System {
+    fn name(&self) -> config::Language {
+        config::Language::System
     }
 
-    pub fn default_version(&self) -> &str {
+    fn default_version(&self) -> &str {
         DEFAULT_VERSION
     }
 
-    pub fn environment_dir(&self) -> Option<&str> {
+    fn environment_dir(&self) -> Option<&str> {
         None
     }
 
-    pub async fn install(&self, _hook: &Hook) -> anyhow::Result<()> {
+    async fn install(&self, _hook: &Hook) -> anyhow::Result<()> {
         todo!()
     }
 
-    pub async fn run(&self, _hook: &Hook, _filenames: &[&String]) -> anyhow::Result<Output> {
+    async fn check_health(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn run(&self, _hook: &Hook, _filenames: &[&String]) -> anyhow::Result<Output> {
         todo!()
     }
 }

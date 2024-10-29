@@ -21,7 +21,7 @@ use url::Url;
 
 use crate::config::{
     self, read_config, read_manifest, ConfigLocalHook, ConfigRemoteHook, ConfigRepo, ConfigWire,
-    Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
+    ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::CWD;
 use crate::git::get_diff;
@@ -29,7 +29,7 @@ use crate::identify::tags_from_path;
 use crate::languages::DEFAULT_VERSION;
 use crate::printer::Printer;
 use crate::store::Store;
-use crate::warn_user;
+use crate::{languages, warn_user};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -338,7 +338,11 @@ impl HookBuilder {
                 .and_then(|v| v.get(&language).cloned());
         }
         if self.config.language_version.is_none() {
-            self.config.language_version = Some(language.default_version().to_string());
+            self.config.language_version = Some(
+                languages::Language::from(language)
+                    .default_version()
+                    .to_string(),
+            );
         }
 
         if self.config.stages.is_none() {
@@ -371,7 +375,7 @@ impl HookBuilder {
 
     /// Check the hook configuration.
     fn check(&self) {
-        let language = self.config.language;
+        let language = languages::Language::from(self.config.language);
         // TODO: check ENVIRONMENT_DIR with language_version and additional_dependencies
         if language.environment_dir().is_none() {
             if self.config.language_version != Some(DEFAULT_VERSION.to_string()) {
@@ -401,7 +405,7 @@ impl HookBuilder {
             id: self.config.id,
             name: self.config.name,
             entry: self.config.entry,
-            language: self.config.language,
+            language: self.config.language.into(),
             alias: self.config.alias.expect("alias not set"),
             files: self.config.files,
             exclude: self.config.exclude,
@@ -439,7 +443,7 @@ pub struct Hook {
     pub id: String,
     pub name: String,
     pub entry: String,
-    pub language: Language,
+    pub language: languages::Language,
     pub alias: String,
     pub files: Option<String>,
     pub exclude: Option<String>,
@@ -497,8 +501,7 @@ impl Hook {
 
     /// Get the environment directory that the hook will be installed to.
     pub fn environment_dir(&self) -> Option<PathBuf> {
-        let lang = self.language;
-        let env_dir = lang.environment_dir()?;
+        let env_dir = self.language.environment_dir()?;
         Some(
             self.path()
                 .join(format!("{}-{}", env_dir, &self.language_version)),

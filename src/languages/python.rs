@@ -1,30 +1,32 @@
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
+use crate::config;
+use crate::hook::Hook;
+use crate::languages::LanguageImpl;
 use assert_cmd::output::{OutputError, OutputOkExt};
 use tokio::process::Command;
 
-use crate::hook::Hook;
-
+#[derive(Debug, Copy, Clone)]
 pub struct Python;
 
-impl Python {
-    pub fn name(&self) -> &str {
-        "Python"
+impl LanguageImpl for Python {
+    fn name(&self) -> config::Language {
+        config::Language::Python
     }
 
-    pub fn default_version(&self) -> &str {
+    fn default_version(&self) -> &str {
         // TODO find the version of python on the system
         "python3"
     }
 
-    pub fn environment_dir(&self) -> Option<&str> {
+    fn environment_dir(&self) -> Option<&str> {
         Some("py_env")
     }
 
     // TODO: install uv automatically
     // TODO: fallback to pip
-    pub async fn install(&self, hook: &Hook) -> anyhow::Result<()> {
+    async fn install(&self, hook: &Hook) -> anyhow::Result<()> {
         let venv = hook.environment_dir().expect("No environment dir found");
         // Create venv
         Command::new("uv")
@@ -55,7 +57,11 @@ impl Python {
         Ok(())
     }
 
-    pub async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<Output> {
+    async fn check_health(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<Output> {
         // Construct the `PATH` environment variable.
         let env = hook.environment_dir().unwrap();
 
