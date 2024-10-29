@@ -296,7 +296,7 @@ async fn run_hooks(
         let (hook_success, new_diff) =
             run_hook(hook, &filenames, skips, diff, columns, verbose, printer).await?;
 
-        success |= hook_success;
+        success &= hook_success;
         diff = new_diff;
         if !success && (fail_fast || hook.fail_fast) {
             break;

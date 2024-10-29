@@ -363,3 +363,65 @@ fn file_types() -> Result<()> {
 
     Ok(())
 }
+
+/// Abort the run if a hook fails.
+#[test]
+fn fail_fast() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project();
+
+    let cwd = context.workdir();
+    cwd.child("file.txt").write_str("Hello, world!  ")?;
+    cwd.child("json.json").write_str("{}\n  ")?;
+    cwd.child("main.py").write_str(r#"print "abc"  "#)?;
+
+    // Global files and exclude.
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+                    fail_fast: false
+                    types: [ "json" ]
+                  - id: trailing-whitespace
+                    fail_fast: true
+                  - id: trailing-whitespace
+                  - id: trailing-whitespace
+            "#
+        })?;
+
+    Command::new("git")
+        .arg("add")
+        .arg(".")
+        .current_dir(cwd)
+        .assert()
+        .success();
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing json.json
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing file.txt
+    Fixing main.py
+
+    ----- stderr -----
+    "#);
+
+    Ok(())
+}
