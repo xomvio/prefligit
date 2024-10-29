@@ -139,6 +139,20 @@ pub async fn get_diff() -> Result<Vec<u8>, Error> {
     Ok(output.stdout)
 }
 
+/// Create a tree object from the current index.
+///
+/// The name of the new tree object is printed to standard output.
+/// The index must be in a fully merged state.
+pub async fn write_tree() -> Result<String, Error> {
+    let output = git_cmd()?
+        .arg("write-tree")
+        .output()
+        .await
+        .map_err(OutputError::with_cause)?
+        .ok()?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Get the path of the top-level directory of the working tree.
 pub async fn get_root() -> Result<PathBuf, Error> {
     let output = git_cmd()?

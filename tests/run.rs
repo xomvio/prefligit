@@ -425,3 +425,53 @@ fn fail_fast() -> Result<()> {
 
     Ok(())
 }
+
+/// Run from a subdirectory. File arguments should be fixed to be relative to the root.
+#[test]
+fn subdirectory() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project();
+
+    let cwd = context.workdir();
+    let child = cwd.child("foo/bar/baz");
+    child.create_dir_all()?;
+    child.child("file.txt").write_str("Hello, world!  ")?;
+
+    // Global files and exclude.
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+            "#
+        })?;
+
+    Command::new("git")
+        .arg("add")
+        .arg(".")
+        .current_dir(cwd)
+        .assert()
+        .success();
+
+    cmd_snapshot!(context.filters(), context.run().current_dir(&child).arg("--files").arg("file.txt"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+    Fixing foo/bar/baz/file.txt
+
+    ----- stderr -----
+    "#);
+
+    Ok(())
+}

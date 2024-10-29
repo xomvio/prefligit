@@ -1,4 +1,5 @@
 use std::fmt::Write;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
 
@@ -11,7 +12,6 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::EnvFilter;
 
 use crate::cli::{Cli, Command, ExitStatus};
-use crate::fs::CWD;
 use crate::git::get_root;
 use crate::printer::Printer;
 
@@ -68,6 +68,39 @@ fn setup_logging(level: Level) -> Result<()> {
     Ok(())
 }
 
+/// Adjusts relative paths in the CLI arguments to be relative to the new working directory.
+fn adjust_relative_paths(mut cli: Cli, new_cwd: &Path) -> Result<Cli> {
+    cli.globals.config = cli
+        .globals
+        .config
+        .map(|path| {
+            if path.exists() {
+                std::path::absolute(path)
+            } else {
+                Ok(path)
+            }
+        })
+        .transpose()?;
+
+    match cli.command {
+        Some(Command::Run(ref mut args)) | Some(Command::TryRepo(ref mut args)) => {
+            args.files = args
+                .files
+                .iter()
+                .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
+                .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
+            args.commit_msg_filename = args
+                .commit_msg_filename
+                .as_ref()
+                .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
+                .transpose()?;
+        }
+        _ => {}
+    }
+
+    Ok(cli)
+}
+
 async fn run(mut cli: Cli) -> Result<ExitStatus> {
     ColorChoice::write_global(cli.globals.color.into());
 
@@ -93,20 +126,40 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
         warnings::enable();
     }
 
-    // `--config` should be resolved relative to the non-root working directory.
-    // TODO: should we adjust `run --files` too?
-    cli.globals.config = cli.globals.config.map(|path| CWD.join(path));
+    if cli.command.is_none() {
+        cli.command = Some(Command::Run(Box::new(cli.run_args.clone())));
+    }
 
     let root = get_root().await?;
+
+    // Adjust relative paths before changing the working directory.
+    let cli = adjust_relative_paths(cli, &root)?;
+
     std::env::set_current_dir(&root)?;
 
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
     debug!("Git root: {:?}", &root);
 
-    let command = cli.command.unwrap_or(Command::Run(Box::new(cli.run_args)));
-    match command {
+    macro_rules! show_settings {
+        ($arg:expr) => {
+            if cli.globals.show_settings {
+                writeln!(printer.stdout(), "{:#?}", $arg)?;
+                return Ok(ExitStatus::Success);
+            }
+        };
+        ($arg:expr, false) => {
+            if cli.globals.show_settings {
+                writeln!(printer.stdout(), "{:#?}", $arg)?;
+            }
+        };
+    }
+    show_settings!(cli.globals, false);
+
+    match cli.command.unwrap() {
         Command::Install(args) => {
+            show_settings!(args);
+
             cli::install(
                 cli.globals.config,
                 args.hook_type,
@@ -116,6 +169,8 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
             .await
         }
         Command::Run(args) => {
+            show_settings!(args);
+
             cli::run(
                 cli.globals.config,
                 args.hook_id,

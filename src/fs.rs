@@ -204,3 +204,44 @@ pub(crate) fn normalize_path(mut path: String) -> String {
     }
     path
 }
+
+/// Compute a path describing `path` relative to `base`.
+///
+/// `lib/python/site-packages/foo/__init__.py` and `lib/python/site-packages` -> `foo/__init__.py`
+/// `lib/marker.txt` and `lib/python/site-packages` -> `../../marker.txt`
+/// `bin/foo_launcher` and `lib/python/site-packages` -> `../../../bin/foo_launcher`
+///
+/// Returns `Err` if there is no relative path between `path` and `base` (for example, if the paths
+/// are on different drives on Windows).
+pub fn relative_to(
+    path: impl AsRef<Path>,
+    base: impl AsRef<Path>,
+) -> Result<PathBuf, std::io::Error> {
+    // Find the longest common prefix, and also return the path stripped from that prefix
+    let (stripped, common_prefix) = base
+        .as_ref()
+        .ancestors()
+        .find_map(|ancestor| {
+            // Simplifying removes the UNC path prefix on windows.
+            dunce::simplified(path.as_ref())
+                .strip_prefix(dunce::simplified(ancestor))
+                .ok()
+                .map(|stripped| (stripped, ancestor))
+        })
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "Trivial strip failed: {} vs. {}",
+                    path.as_ref().display(),
+                    base.as_ref().display()
+                ),
+            )
+        })?;
+
+    // go as many levels up as required
+    let levels_up = base.as_ref().components().count() - common_prefix.components().count();
+    let up = std::iter::repeat("..").take(levels_up).collect::<PathBuf>();
+
+    Ok(up.join(stripped))
+}

@@ -89,7 +89,7 @@ pub(crate) struct Cli {
     pub(crate) globals: GlobalArgs,
 }
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(next_help_heading = "Global options", next_display_order = 1000)]
 #[command(disable_help_flag = true, disable_version_flag = true)]
 pub(crate) struct GlobalArgs {
@@ -128,6 +128,12 @@ pub(crate) struct GlobalArgs {
     /// Display the pre-commit version.
     #[arg(global = true, short = 'V', long, action = clap::ArgAction::Version)]
     version: Option<bool>,
+
+    /// Show the resolved settings for the current command.
+    ///
+    /// This option is used for debugging and development purposes.
+    #[arg(global = true, long, hide = true)]
+    pub show_settings: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -158,7 +164,7 @@ pub(crate) enum Command {
     #[command(name = "init-templatedir")]
     InitTemplateDir,
     /// Try the pre-commit hooks in the current repo.
-    TryRepo,
+    TryRepo(Box<RunArgs>),
 
     /// The implementation of the `pre-commit` hook.
     #[command(hide = true)]
@@ -197,7 +203,7 @@ pub(crate) enum HookType {
     PrepareCommitMsg,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub(crate) struct RunArgs {
     /// The hook ID to run.
     #[arg(value_name = "HOOK")]
@@ -231,7 +237,7 @@ pub(crate) struct RunArgs {
     #[arg(long, hide = true)]
     pub(crate) pre_rebase_branch: Option<String>,
     #[arg(long, hide = true, required_if_eq_any = [("hook_stage", "prepare-commit-msg"), ("hook_stage", "commit-msg")])]
-    pub(crate) commit_msg_filename: Option<String>,
+    pub(crate) commit_msg_filename: Option<PathBuf>,
     #[arg(long, hide = true)]
     pub(crate) prepare_commit_message_source: Option<String>,
     #[arg(long, hide = true)]

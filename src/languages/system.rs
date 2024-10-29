@@ -29,6 +29,10 @@ impl LanguageImpl for System {
     }
 
     async fn run(&self, _hook: &Hook, _filenames: &[&String]) -> anyhow::Result<Output> {
-        todo!()
+        Ok(Output {
+            status: std::process::ExitStatus::default(),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        })
     }
 }
