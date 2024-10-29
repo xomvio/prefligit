@@ -196,11 +196,12 @@ pub(crate) fn normalize_path(path: String) -> String {
 pub(crate) fn normalize_path(mut path: String) -> String {
     use std::path::is_separator;
 
-    for i in 0..path.len() {
-        if path[i] == b'/' || !is_separator(char::from(path[i])) {
+    let bytes = unsafe { path.as_bytes_mut() };
+    for i in 0..bytes.len() {
+        if bytes[i] == b'/' || !is_separator(char::from(bytes[i])) {
             continue;
         }
-        path[i] = b'/';
+        bytes[i] = b'/';
     }
     path
 }

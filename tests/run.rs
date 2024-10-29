@@ -442,13 +442,13 @@ fn subdirectory() -> Result<()> {
     context
         .workdir()
         .child(".pre-commit-config.yaml")
-        .write_str(indoc::indoc! {r#"
+        .write_str(indoc::indoc! {r"
             repos:
               - repo: https://github.com/pre-commit/pre-commit-hooks
                 rev: v5.0.0
                 hooks:
                   - id: trailing-whitespace
-            "#
+            "
         })?;
 
     Command::new("git")

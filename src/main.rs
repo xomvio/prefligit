@@ -82,20 +82,17 @@ fn adjust_relative_paths(mut cli: Cli, new_cwd: &Path) -> Result<Cli> {
         })
         .transpose()?;
 
-    match cli.command {
-        Some(Command::Run(ref mut args)) | Some(Command::TryRepo(ref mut args)) => {
-            args.files = args
-                .files
-                .iter()
-                .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
-                .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
-            args.commit_msg_filename = args
-                .commit_msg_filename
-                .as_ref()
-                .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
-                .transpose()?;
-        }
-        _ => {}
+    if let Some(Command::Run(ref mut args) | Command::TryRepo(ref mut args)) = cli.command {
+        args.files = args
+            .files
+            .iter()
+            .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
+            .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
+        args.commit_msg_filename = args
+            .commit_msg_filename
+            .as_ref()
+            .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
+            .transpose()?;
     }
 
     Ok(cli)
