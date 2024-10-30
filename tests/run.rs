@@ -1,8 +1,8 @@
+use crate::common::{cmd_snapshot, TestContext};
 use anyhow::Result;
 use assert_cmd::Command;
 use assert_fs::prelude::*;
-
-use crate::common::{cmd_snapshot, TestContext};
+use insta::assert_snapshot;
 
 mod common;
 
@@ -472,6 +472,57 @@ fn subdirectory() -> Result<()> {
 
     ----- stderr -----
     "#);
+
+    Ok(())
+}
+
+/// Test hook `log_file` option.
+#[test]
+fn log_file() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project();
+
+    let cwd = context.workdir();
+    cwd.child("file.txt").write_str("Hello, world!  ")?;
+
+    // Global files and exclude.
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+                    log_file: log.txt
+            "
+        })?;
+
+    Command::new("git")
+        .arg("add")
+        .arg(".")
+        .current_dir(cwd)
+        .assert()
+        .success();
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Cloning https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    Installing environment for https://github.com/pre-commit/pre-commit-hooks@v5.0.0
+    trim trailing whitespace.................................................Failed
+    - hook id: trailing-whitespace
+    - exit code: 1
+    - files were modified by this hook
+
+    ----- stderr -----
+    "#);
+
+    let log = context.read("log.txt");
+    assert_snapshot!(log, @"Fixing file.txt");
 
     Ok(())
 }

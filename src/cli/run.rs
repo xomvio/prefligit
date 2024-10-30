@@ -83,7 +83,7 @@ pub(crate) async fn run(
     }
 
     let skips = get_skips();
-    let non_skipped = hooks
+    let to_install = hooks
         .iter()
         .filter(|h| !skips.contains(&h.id) && !skips.contains(&h.alias))
         .cloned()
@@ -91,16 +91,15 @@ pub(crate) async fn run(
 
     debug!(
         "Hooks going to run: {:?}",
-        non_skipped.iter().map(|h| &h.id).collect::<Vec<_>>()
+        to_install.iter().map(|h| &h.id).collect::<Vec<_>>()
     );
-    install_hooks(&non_skipped, printer).await?;
+    install_hooks(&to_install, printer).await?;
     drop(lock);
 
-    let filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files)
-        .await?
-        .into_iter()
-        .map(normalize_path)
-        .collect::<Vec<_>>();
+    let mut filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
+    for filename in &mut filenames {
+        normalize_path(filename);
+    }
 
     let filenames = filter_filenames(
         filenames.par_iter(),
@@ -440,10 +439,22 @@ async fn run_hook(
                 "- files were modified by this hook".dimmed()
             )?;
         }
-        if !(output.stdout.is_empty() && output.stderr.is_empty()) {
-            // TODO: write to log file
-            std::io::stdout().write_all(&output.stdout)?;
-            std::io::stdout().write_all(&output.stderr)?;
+
+        // To be consistent with pre-commit, merge stderr into stdout.
+        let stdout = output.stdout.trim_ascii();
+        if !stdout.is_empty() {
+            if let Some(file) = hook.log_file.as_deref() {
+                fs_err::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(file)
+                    .and_then(|mut f| {
+                        f.write_all(stdout)?;
+                        Ok(())
+                    })?;
+            } else {
+                writeln!(printer.stdout(), "{}", String::from_utf8_lossy(stdout))?;
+            };
         }
     }
 
@@ -455,7 +466,6 @@ fn filter_filenames<'a>(
     include: Option<&str>,
     exclude: Option<&str>,
 ) -> Result<impl ParallelIterator<Item = &'a String>, regex::Error> {
-    // TODO: normalize path separators
     let include = include.map(Regex::new).transpose()?;
     let exclude = exclude.map(Regex::new).transpose()?;
 
