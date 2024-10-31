@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use anstream::ColorChoice;
 use anyhow::Result;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -11,7 +12,7 @@ use owo_colors::{OwoColorize, Style};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use regex::Regex;
 use tokio::process::Command;
-use tracing::{debug, trace};
+use tracing::{debug, error};
 use unicode_width::UnicodeWidthStr;
 
 use crate::cli::ExitStatus;
@@ -311,11 +312,17 @@ async fn run_hooks(
 
     if !success && show_diff_on_failure {
         writeln!(printer.stdout(), "All changes made by hooks:")?;
-        // TODO: color
+        let color = match ColorChoice::global() {
+            ColorChoice::Auto => "auto",
+            ColorChoice::Always | ColorChoice::AlwaysAnsi => "always",
+            ColorChoice::Never => "never",
+        };
         Command::new("git")
             .arg("diff")
             .arg("--no-ext-diff")
             .arg("--no-pager")
+            .arg("--color")
+            .arg(color)
             .spawn()?
             .wait()
             .await?;
@@ -364,7 +371,7 @@ async fn run_hook(
             match tags_from_path(path) {
                 Ok(tags) => filter.filter(&tags),
                 Err(err) => {
-                    trace!("Failed to get tags for {filename}: {err}");
+                    error!("Failed to get tags for {filename}: {err}");
                     false
                 }
             }
