@@ -21,13 +21,16 @@ It aims to be a drop-in replacement for the original tool while also providing s
 ## Installation
 
 ```shell
-# (Not available yet) Using brew
+# Using brew
 brew install j178/tap/pre-commit-rs
+
+# Using the installer script
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/pre-commit-rs/releases/latest/download/pre-commit-rs-installer.sh | sh
 
 # Using cargo
 cargo install --git https://github.com/j178/pre-commit-rs
 
-# Using precompiled binaries from GitHub releases, go to:
+# Download precompiled binaries from GitHub releases, go to:
 https://github.com/j178/pre-commit-rs/releases
 ```
 
