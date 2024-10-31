@@ -17,8 +17,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::cli::ExitStatus;
 use crate::config::Stage;
-use crate::fs::normalize_path;
-use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files};
+use crate::fs::{normalize_path, Simplified};
+use crate::git::{get_all_files, get_changed_files, get_diff, get_staged_files, GIT};
 use crate::hook::{Hook, Project};
 use crate::identify::tags_from_path;
 use crate::printer::Printer;
@@ -37,8 +37,18 @@ pub(crate) async fn run(
     verbose: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
+    let config_file = Project::find_config_file(config)?;
+    if config_not_staged(&config_file).await? {
+        writeln!(
+            printer.stderr(),
+            "Your pre-commit configuration is unstaged.\n`git add {}` to fix this.",
+            &config_file.user_display()
+        )?;
+        return Ok(ExitStatus::Failure);
+    }
+
+    let mut project = Project::new(config_file)?;
     let store = Store::from_settings()?.init()?;
-    let mut project = Project::current(config)?;
 
     // TODO: check .pre-commit-config.yaml status and git status
     // TODO: fill env vars
@@ -121,6 +131,18 @@ pub(crate) async fn run(
     .await?;
 
     Ok(ExitStatus::Success)
+}
+
+async fn config_not_staged(config: &Path) -> Result<bool> {
+    let output = Command::new(GIT.as_ref()?)
+        .arg("diff")
+        .arg("--quiet") // Implies --exit-code
+        .arg("--no-ext-diff")
+        .arg(config)
+        .status()
+        .await?;
+
+    Ok(!output.success())
 }
 
 fn get_skips() -> Vec<String> {
