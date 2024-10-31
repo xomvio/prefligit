@@ -1,6 +1,6 @@
 [package]
 name = "pre-commit-rs"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["j178 <10510431+j178@users.noreply.github.com>"]
 description = "pre-commit implemeneted in Rust"
 repository = "https://github.com/j178/pre-commit-rs"
