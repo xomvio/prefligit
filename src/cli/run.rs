@@ -9,6 +9,9 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use itertools::Itertools;
 use owo_colors::{OwoColorize, Style};
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use regex::Regex;
 use tokio::process::Command;
@@ -353,6 +356,14 @@ async fn run_hooks(
     Ok(())
 }
 
+/// Shuffle the files so that they more evenly fill out the xargs
+/// partitions, but do it deterministically in case a hook cares about ordering.
+fn shuffle(filenames: &mut Vec<&String>) {
+    const SEED: [u8; 32] = [0; 32];
+    let mut rng = StdRng::from_seed(SEED);
+    filenames.shuffle(&mut rng);
+}
+
 async fn run_hook(
     hook: &Hook,
     filenames: &[&String],
@@ -387,7 +398,7 @@ async fn run_hook(
     )?;
 
     let filter = FileTypeFilter::from_hook(hook);
-    let filenames: Vec<_> = filenames
+    let mut filenames: Vec<_> = filenames
         .filter(|&filename| {
             let path = Path::new(filename);
             match tags_from_path(path) {
@@ -424,6 +435,7 @@ async fn run_hook(
     let start = std::time::Instant::now();
 
     let output = if hook.pass_filenames {
+        shuffle(&mut filenames);
         hook.language.run(hook, &filenames).await?
     } else {
         hook.language.run(hook, &[]).await?
