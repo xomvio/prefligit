@@ -306,8 +306,8 @@ async fn install_hook(hook: &Hook, env_dir: PathBuf, printer: Printer) -> Result
 
     if env_dir.try_exists()? {
         debug!(
-            "Removing existing environment directory {}",
-            env_dir.display()
+            env_dir = %env_dir.display(),
+            "Removing existing environment directory",
         );
         fs_err::remove_dir_all(&env_dir)?;
     }

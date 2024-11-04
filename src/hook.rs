@@ -124,8 +124,8 @@ impl Project {
     /// Load a project configuration from a directory.
     pub fn new(config_path: PathBuf) -> Result<Self, Error> {
         debug!(
-            "Loading project configuration from {}",
-            config_path.display()
+            path = %config_path.display(),
+            "Loading project configuration"
         );
         let config = read_config(&config_path)?;
         let size = config.repos.len();

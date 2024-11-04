@@ -41,22 +41,22 @@ impl Store {
     pub fn from_settings() -> Result<Self, Error> {
         if let Some(path) = std::env::var_os("PRE_COMMIT_HOME") {
             debug!(
-                "Loading store from PRE_COMMIT_HOME: {}",
-                path.to_string_lossy()
+                path = %path.to_string_lossy(),
+                "Loading store from PRE_COMMIT_HOME",
             );
             return Ok(Self::from_path(path));
         } else if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
             let path = PathBuf::from(path).join("pre-commit");
             debug!(
-                "Loading store from XDG_CACHE_HOME: {}",
-                path.to_string_lossy()
+                path = %path.to_string_lossy(),
+                "Loading store from XDG_CACHE_HOME",
             );
             return Ok(Self::from_path(path));
         }
 
         let home = home::home_dir().ok_or(Error::HomeNotFound)?;
         let path = home.join(".cache").join("pre-commit");
-        debug!("Loading store from ~/.cache: {}", path.display());
+        debug!(path = %path.display(), "Loading store from ~/.cache");
         Ok(Self::from_path(path))
     }
 
@@ -239,8 +239,9 @@ impl Store {
                 repo_config.rev
             )?;
             debug!(
-                "Cloning {}@{} into {}",
-                repo_config.repo, repo_config.rev, path
+                target = path,
+                repo = format!("{}@{}", repo_config.repo, repo_config.rev),
+                "Cloning repo",
             );
             clone_repo(repo_config.repo.as_str(), &repo_config.rev, temp.path()).await?;
         } else {
@@ -258,12 +259,12 @@ impl Store {
                 deps.join(","),
             )?;
             debug!(
-                "Preparing {}@{} with dependencies {} by copying from {} into {}",
+                source = base_repo_path,
+                target = path,
+                deps = deps.join(","),
+                "Preparing {}@{} by copying",
                 repo_config.repo,
                 repo_config.rev,
-                deps.join(","),
-                base_repo_path,
-                path,
             );
             copy_dir_all(base_repo_path, &path)?;
         }

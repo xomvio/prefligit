@@ -220,14 +220,12 @@ async fn run_hook(
             match tags_from_path(path) {
                 Ok(tags) => filter.filter(&tags),
                 Err(err) => {
-                    error!("Failed to get tags for {filename}: {err}");
+                    error!(filename, error = %err, "Failed to get tags");
                     false
                 }
             }
         })
         .collect();
-
-    trace!("Files for {}: {}", hook.id, filenames.len());
 
     if filenames.is_empty() && !hook.always_run {
         writeln!(
@@ -387,9 +385,11 @@ where
     concurrency = concurrency.min(partitions.len());
     let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
     trace!(
-        "Running {} (concurrency={concurrency}, partitions={})",
+        total_files = filenames.len(),
+        partitions = partitions.len(),
+        concurrency = concurrency,
+        "Running {}",
         hook.id,
-        partitions.len()
     );
 
     let run = Arc::new(run);

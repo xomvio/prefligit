@@ -44,17 +44,18 @@ impl LockedFile {
         );
         match file.file().try_lock_exclusive() {
             Ok(()) => {
-                debug!("Acquired lock for `{resource}`");
+                debug!(resource, "Acquired lock");
                 Ok(Self(file))
             }
             Err(err) => {
                 // Log error code and enum kind to help debugging more exotic failures
                 if err.kind() != std::io::ErrorKind::WouldBlock {
-                    trace!("Try lock error: {err:?}");
+                    trace!(error = ?err, "Try lock error");
                 }
                 info!(
-                    "Waiting to acquire lock for `{resource}` at `{}`",
-                    file.path().display(),
+                    resource,
+                    path = %file.path().display(),
+                    "Waiting to acquire lock",
                 );
                 file.file().lock_exclusive().map_err(|err| {
                     // Not an fs_err method, we need to build our own path context
@@ -68,7 +69,7 @@ impl LockedFile {
                     )
                 })?;
 
-                debug!("Acquired lock for `{resource}`");
+                debug!(resource, "Acquired lock");
                 Ok(Self(file))
             }
         }
@@ -106,7 +107,7 @@ impl Drop for LockedFile {
                 err
             );
         } else {
-            debug!("Released lock at `{}`", self.0.path().display());
+            debug!(path = %self.0.path().display(), "Released lock");
         }
     }
 }
