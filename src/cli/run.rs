@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -10,7 +11,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tokio::process::Command;
 use tracing::{debug, trace};
 
-use crate::cli::ExitStatus;
+use crate::cli::{ExitStatus, RunMiscArgs};
 use crate::config::Stage;
 use crate::fs::{normalize_path, Simplified};
 use crate::git::{get_all_files, get_changed_files, get_staged_files, has_unmerged_paths, GIT};
@@ -29,7 +30,7 @@ pub(crate) async fn run(
     all_files: bool,
     files: Vec<PathBuf>,
     show_diff_on_failure: bool,
-    commit_msg_filename: Option<PathBuf>,
+    misc_args: RunMiscArgs,
     verbose: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
@@ -54,22 +55,14 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Failure);
     }
 
-    if matches!(hook_stage, Some(Stage::PrepareCommitMsg | Stage::CommitMsg))
-        && commit_msg_filename.is_none()
-    {
-        writeln!(
-            printer.stderr(),
-            "`--commit-msg-filename` is required for stage `{}`",
-            hook_stage.unwrap().cyan()
-        )?;
-        return Ok(ExitStatus::Failure);
-    }
     // Prevent recursive post-checkout hooks.
     if matches!(hook_stage, Some(Stage::PostCheckout))
         && std::env::var_os("_PRE_COMMIT_SKIP_POST_CHECKOUT").is_some()
     {
         return Ok(ExitStatus::Success);
     }
+
+    let env_vars = fill_envs(from_ref.as_ref(), to_ref.as_ref(), &misc_args);
 
     let mut project = Project::new(config_file)?;
     let store = Store::from_settings()?.init()?;
@@ -136,7 +129,7 @@ pub(crate) async fn run(
         to_ref,
         all_files,
         files,
-        commit_msg_filename,
+        misc_args.commit_msg_filename.as_ref(),
     )
     .await?;
     for filename in &mut filenames {
@@ -164,6 +157,7 @@ pub(crate) async fn run(
         &hooks,
         &skips,
         filenames,
+        env_vars,
         project.config().fail_fast.unwrap_or(false),
         show_diff_on_failure,
         verbose,
@@ -186,6 +180,59 @@ async fn config_not_staged(config: &Path) -> Result<bool> {
     Ok(!output.success())
 }
 
+fn fill_envs(
+    from_ref: Option<&String>,
+    to_ref: Option<&String>,
+    args: &RunMiscArgs,
+) -> HashMap<&'static str, String> {
+    let mut env = HashMap::new();
+    env.insert("PRE_COMMIT", "1".into());
+
+    if let Some(ref source) = args.prepare_commit_message_source {
+        env.insert("PRE_COMMIT_COMMIT_MSG_SOURCE", source.clone());
+    }
+    if let Some(ref object) = args.commit_object_name {
+        env.insert("PRE_COMMIT_COMMIT_OBJECT_NAME", object.clone());
+    }
+    if let Some(from_ref) = from_ref {
+        env.insert("PRE_COMMIT_ORIGIN", from_ref.clone());
+        env.insert("PRE_COMMIT_FROM_REF", from_ref.clone());
+    }
+    if let Some(to_ref) = to_ref {
+        env.insert("PRE_COMMIT_SOURCE", to_ref.clone());
+        env.insert("PRE_COMMIT_TO_REF", to_ref.clone());
+    }
+    if let Some(ref upstream) = args.pre_rebase_upstream {
+        env.insert("PRE_COMMIT_PRE_REBASE_UPSTREAM", upstream.clone());
+    }
+    if let Some(ref branch) = args.pre_rebase_branch {
+        env.insert("PRE_COMMIT_PRE_REBASE_BRANCH", branch.clone());
+    }
+    if let Some(ref branch) = args.local_branch {
+        env.insert("PRE_COMMIT_LOCAL_BRANCH", branch.clone());
+    }
+    if let Some(ref branch) = args.remote_branch {
+        env.insert("PRE_COMMIT_REMOTE_BRANCH", branch.clone());
+    }
+    if let Some(ref name) = args.remote_name {
+        env.insert("PRE_COMMIT_REMOTE_NAME", name.clone());
+    }
+    if let Some(ref url) = args.remote_url {
+        env.insert("PRE_COMMIT_REMOTE_URL", url.clone());
+    }
+    if let Some(ref checkout) = args.checkout_type {
+        env.insert("PRE_COMMIT_CHECKOUT_TYPE", checkout.clone());
+    }
+    if args.is_squash_merge {
+        env.insert("PRE_COMMIT_SQUASH_MERGE", "1".into());
+    }
+    if let Some(ref command) = args.rewrite_command {
+        env.insert("PRE_COMMIT_REWRITE_COMMAND", command.clone());
+    }
+
+    env
+}
+
 fn get_skips() -> Vec<String> {
     match std::env::var_os("SKIP") {
         Some(s) if !s.is_empty() => s
@@ -206,7 +253,7 @@ async fn all_filenames(
     to_ref: Option<String>,
     all_files: bool,
     files: Vec<PathBuf>,
-    commit_msg_filename: Option<PathBuf>,
+    commit_msg_filename: Option<&PathBuf>,
 ) -> Result<Vec<String>> {
     if hook_stage.is_some_and(|stage| !stage.operate_on_files()) {
         return Ok(vec![]);

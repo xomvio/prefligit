@@ -204,30 +204,7 @@ pub(crate) enum HookType {
 }
 
 #[derive(Debug, Clone, Args)]
-pub(crate) struct RunArgs {
-    /// The hook ID to run.
-    #[arg(value_name = "HOOK")]
-    pub(crate) hook_id: Option<String>,
-    /// Run on all files in the repo.
-    #[arg(short, long, conflicts_with_all = ["files", "from_ref", "to_ref"])]
-    pub(crate) all_files: bool,
-    /// Specific filenames to run hooks on.
-    #[arg(long, conflicts_with_all = ["all_files", "from_ref", "to_ref"])]
-    pub(crate) files: Vec<PathBuf>,
-    /// The original ref in a `from_ref...to_ref` diff expression.
-    /// Files changed in this diff will be run through the hooks.
-    #[arg(short = 's', long, alias = "source", requires = "to_ref")]
-    pub(crate) from_ref: Option<String>,
-    /// The destination ref in a `from_ref...to_ref` diff expression.
-    /// Files changed in this diff will be run through the hooks.
-    #[arg(short = 'o', long, alias = "origin", requires = "from_ref")]
-    pub(crate) to_ref: Option<String>,
-    /// The stage during which the hook is fired.
-    #[arg(long)]
-    pub(crate) hook_stage: Option<Stage>,
-    /// When hooks fail, run `git diff` directly afterward.
-    #[arg(long)]
-    pub(crate) show_diff_on_failure: bool,
+pub(crate) struct RunMiscArgs {
     #[arg(long, hide = true)]
     pub(crate) remote_branch: Option<String>,
     #[arg(long, hide = true)]
@@ -252,6 +229,36 @@ pub(crate) struct RunArgs {
     pub(crate) is_squash_merge: bool,
     #[arg(long, hide = true)]
     pub(crate) rewrite_command: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub(crate) struct RunArgs {
+    /// The hook ID to run.
+    #[arg(value_name = "HOOK")]
+    pub(crate) hook_id: Option<String>,
+    /// Run on all files in the repo.
+    #[arg(short, long, conflicts_with_all = ["files", "from_ref", "to_ref"])]
+    pub(crate) all_files: bool,
+    /// Specific filenames to run hooks on.
+    #[arg(long, conflicts_with_all = ["all_files", "from_ref", "to_ref"])]
+    pub(crate) files: Vec<PathBuf>,
+    /// The original ref in a `from_ref...to_ref` diff expression.
+    /// Files changed in this diff will be run through the hooks.
+    #[arg(short = 's', long, alias = "source", requires = "to_ref")]
+    pub(crate) from_ref: Option<String>,
+    /// The destination ref in a `from_ref...to_ref` diff expression.
+    /// Files changed in this diff will be run through the hooks.
+    #[arg(short = 'o', long, alias = "origin", requires = "from_ref")]
+    pub(crate) to_ref: Option<String>,
+    /// The stage during which the hook is fired.
+    #[arg(long)]
+    pub(crate) hook_stage: Option<Stage>,
+    /// When hooks fail, run `git diff` directly afterward.
+    #[arg(long)]
+    pub(crate) show_diff_on_failure: bool,
+
+    #[command(flatten)]
+    pub(crate) misc: RunMiscArgs,
 }
 
 #[derive(Debug, Args)]

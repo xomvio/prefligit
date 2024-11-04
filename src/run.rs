@@ -1,4 +1,5 @@
 use std::cmp::max;
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::future::Future;
 use std::io::Write as _;
@@ -120,6 +121,8 @@ pub async fn run_hooks(
     hooks: &[Hook],
     skips: &[String],
     filenames: Vec<String>,
+    // TODO: pass down env vars
+    _env_vars: HashMap<&'static str, String>,
     fail_fast: bool,
     show_diff_on_failure: bool,
     verbose: bool,
