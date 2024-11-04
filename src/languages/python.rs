@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -63,9 +64,14 @@ impl LanguageImpl for Python {
         todo!()
     }
 
-    async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<(i32, Vec<u8>)> {
+    async fn run(
+        &self,
+        hook: &Hook,
+        filenames: &[&String],
+        env_vars: Arc<HashMap<&'static str, String>>,
+    ) -> anyhow::Result<(i32, Vec<u8>)> {
         // Get environment directory and parse command
-        let env = hook
+        let env_dir = hook
             .environment_dir()
             .expect("No environment dir for Python");
 
@@ -74,7 +80,7 @@ impl LanguageImpl for Python {
 
         // Construct PATH with venv bin directory first
         let new_path = std::env::join_paths(
-            std::iter::once(bin_dir(env.as_path())).chain(
+            std::iter::once(bin_dir(env_dir.as_path())).chain(
                 std::env::var_os("PATH")
                     .as_ref()
                     .iter()
@@ -84,7 +90,7 @@ impl LanguageImpl for Python {
 
         let cmds = Arc::new(cmds);
         let hook_args = Arc::new(hook.args.clone());
-        let env = Arc::new(env.clone());
+        let env_dir = Arc::new(env_dir.clone());
         let new_path = Arc::new(new_path);
 
         let run = move |batch: Vec<String>| {
@@ -92,16 +98,18 @@ impl LanguageImpl for Python {
             // otherwise it will be moved into the async block and can't be used again.
             let cmds = cmds.clone();
             let hook_args = hook_args.clone();
-            let env = env.clone();
+            let env_dir = env_dir.clone();
             let new_path = new_path.clone();
+            let env_vars = env_vars.clone();
 
             // TODO: combine stdout and stderr
             async move {
                 let output = Command::new(&cmds[0])
                     .args(&cmds[1..])
-                    .env("VIRTUAL_ENV", env.as_ref())
+                    .env("VIRTUAL_ENV", env_dir.as_ref())
                     .env("PATH", new_path.as_ref())
                     .env_remove("PYTHONHOME")
+                    .envs(env_vars.as_ref())
                     .args(hook_args.as_slice())
                     .args(batch)
                     .output()

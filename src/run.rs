@@ -121,13 +121,14 @@ pub async fn run_hooks(
     hooks: &[Hook],
     skips: &[String],
     filenames: Vec<String>,
-    // TODO: pass down env vars
-    _env_vars: HashMap<&'static str, String>,
+    env_vars: HashMap<&'static str, String>,
     fail_fast: bool,
     show_diff_on_failure: bool,
     verbose: bool,
     printer: Printer,
 ) -> anyhow::Result<()> {
+    let env_vars = Arc::new(env_vars);
+
     let columns = calculate_columns(hooks);
     // TODO: progress bar, format output
     let mut success = true;
@@ -135,8 +136,17 @@ pub async fn run_hooks(
     let mut diff = get_diff().await?;
     // hooks must run in serial
     for hook in hooks {
-        let (hook_success, new_diff) =
-            run_hook(hook, &filenames, skips, diff, columns, verbose, printer).await?;
+        let (hook_success, new_diff) = run_hook(
+            hook,
+            &filenames,
+            env_vars.clone(),
+            skips,
+            diff,
+            columns,
+            verbose,
+            printer,
+        )
+        .await?;
 
         success &= hook_success;
         diff = new_diff;
@@ -176,6 +186,7 @@ fn shuffle<T>(filenames: &mut [T]) {
 async fn run_hook(
     hook: &Hook,
     filenames: &[String],
+    env_vars: Arc<HashMap<&'static str, String>>,
     skips: &[String],
     diff: Vec<u8>,
     columns: usize,
@@ -245,9 +256,9 @@ async fn run_hook(
 
     let (status, output) = if hook.pass_filenames {
         shuffle(&mut filenames);
-        hook.language.run(hook, &filenames).await?
+        hook.language.run(hook, &filenames, env_vars).await?
     } else {
-        hook.language.run(hook, &[]).await?
+        hook.language.run(hook, &[], env_vars).await?
     };
 
     let duration = start.elapsed();

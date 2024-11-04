@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+
 use tokio::process::Command;
 
 use crate::config;
@@ -30,7 +32,12 @@ impl LanguageImpl for System {
         Ok(())
     }
 
-    async fn run(&self, hook: &Hook, filenames: &[&String]) -> anyhow::Result<(i32, Vec<u8>)> {
+    async fn run(
+        &self,
+        hook: &Hook,
+        filenames: &[&String],
+        env_vars: Arc<HashMap<&'static str, String>>,
+    ) -> anyhow::Result<(i32, Vec<u8>)> {
         let cmds = shlex::split(&hook.entry).ok_or(anyhow::anyhow!("Failed to parse entry"))?;
 
         let cmds = Arc::new(cmds);
@@ -39,6 +46,7 @@ impl LanguageImpl for System {
         let run = move |batch: Vec<String>| {
             let cmds = cmds.clone();
             let hook_args = hook_args.clone();
+            let env_vars = env_vars.clone();
 
             async move {
                 let output = Command::new(&cmds[0])
@@ -46,6 +54,7 @@ impl LanguageImpl for System {
                     .args(hook_args.as_ref())
                     .args(batch)
                     .stderr(std::process::Stdio::inherit())
+                    .envs(env_vars.as_ref())
                     .output()
                     .await?;
 

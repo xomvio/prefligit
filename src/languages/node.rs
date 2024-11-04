@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use crate::config;
 use crate::hook::Hook;
 use crate::languages::{LanguageImpl, DEFAULT_VERSION};
@@ -29,7 +32,12 @@ impl LanguageImpl for Node {
         todo!()
     }
 
-    async fn run(&self, _hook: &Hook, _filenames: &[&String]) -> anyhow::Result<(i32, Vec<u8>)> {
+    async fn run(
+        &self,
+        _hook: &Hook,
+        _filenames: &[&String],
+        _env_vars: Arc<HashMap<&'static str, String>>,
+    ) -> anyhow::Result<(i32, Vec<u8>)> {
         Ok((0, Vec::new()))
     }
 }
