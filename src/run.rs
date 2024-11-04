@@ -179,7 +179,6 @@ async fn run_hook(
     verbose: bool,
     printer: Printer,
 ) -> anyhow::Result<(bool, Vec<u8>)> {
-    // TODO: check files diff
     if skips.contains(&hook.id) || skips.contains(&hook.alias) {
         writeln!(
             printer.stdout(),

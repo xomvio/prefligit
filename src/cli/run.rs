@@ -13,7 +13,7 @@ use tracing::{debug, trace};
 use crate::cli::ExitStatus;
 use crate::config::Stage;
 use crate::fs::{normalize_path, Simplified};
-use crate::git::{get_all_files, get_changed_files, get_staged_files, GIT};
+use crate::git::{get_all_files, get_changed_files, get_staged_files, has_unmerged_paths, GIT};
 use crate::hook::{Hook, Project};
 use crate::printer::Printer;
 use crate::run::{run_hooks, FilenameFilter};
@@ -29,11 +29,23 @@ pub(crate) async fn run(
     all_files: bool,
     files: Vec<PathBuf>,
     show_diff_on_failure: bool,
+    commit_msg_filename: Option<PathBuf>,
     verbose: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
+    let should_stash = !all_files && files.is_empty();
+
+    // Check if we have unresolved merge conflict files and fail fast.
+    if should_stash && has_unmerged_paths().await? {
+        writeln!(
+            printer.stderr(),
+            "You have unmerged paths. Resolve them before running pre-commit."
+        )?;
+        return Ok(ExitStatus::Failure);
+    }
+
     let config_file = Project::find_config_file(config)?;
-    if config_not_staged(&config_file).await? {
+    if should_stash && config_not_staged(&config_file).await? {
         writeln!(
             printer.stderr(),
             "Your pre-commit configuration is unstaged.\n`git add {}` to fix this.",
@@ -42,10 +54,26 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Failure);
     }
 
+    if matches!(hook_stage, Some(Stage::PrepareCommitMsg | Stage::CommitMsg))
+        && commit_msg_filename.is_none()
+    {
+        writeln!(
+            printer.stderr(),
+            "`--commit-msg-filename` is required for stage `{}`",
+            hook_stage.unwrap().cyan()
+        )?;
+        return Ok(ExitStatus::Failure);
+    }
+    // Prevent recursive post-checkout hooks.
+    if matches!(hook_stage, Some(Stage::PostCheckout))
+        && std::env::var_os("_PRE_COMMIT_SKIP_POST_CHECKOUT").is_some()
+    {
+        return Ok(ExitStatus::Success);
+    }
+
     let mut project = Project::new(config_file)?;
     let store = Store::from_settings()?.init()?;
 
-    // TODO: check .pre-commit-config.yaml status and git status
     // TODO: fill env vars
     // TODO: impl staged_files_only
 
@@ -102,7 +130,15 @@ pub(crate) async fn run(
     install_hooks(&to_install, printer).await?;
     drop(lock);
 
-    let mut filenames = all_filenames(hook_stage, from_ref, to_ref, all_files, files).await?;
+    let mut filenames = all_filenames(
+        hook_stage,
+        from_ref,
+        to_ref,
+        all_files,
+        files,
+        commit_msg_filename,
+    )
+    .await?;
     for filename in &mut filenames {
         normalize_path(filename);
     }
@@ -170,13 +206,17 @@ async fn all_filenames(
     to_ref: Option<String>,
     all_files: bool,
     files: Vec<PathBuf>,
+    commit_msg_filename: Option<PathBuf>,
 ) -> Result<Vec<String>> {
     if hook_stage.is_some_and(|stage| !stage.operate_on_files()) {
         return Ok(vec![]);
     }
-    // if hook_stage.is_some_and(|stage| matches!(stage, Stage::PrepareCommitMsg | Stage::CommitMsg)) {
-    //     return iter::once(commit_msg_filename.unwrap());
-    // }
+    if hook_stage.is_some_and(|stage| matches!(stage, Stage::PrepareCommitMsg | Stage::CommitMsg)) {
+        return Ok(vec![commit_msg_filename
+            .unwrap()
+            .to_string_lossy()
+            .to_string()]);
+    }
     if let (Some(from_ref), Some(to_ref)) = (from_ref, to_ref) {
         let files = get_changed_files(&from_ref, &to_ref).await?;
         debug!(

@@ -27,7 +27,7 @@ impl LanguageImpl for Python {
     }
 
     // TODO: install uv automatically
-    // TODO: fallback to pip
+    // TODO: fallback to virtualenv, pip
     async fn install(&self, hook: &Hook) -> anyhow::Result<()> {
         let venv = hook.environment_dir().expect("No environment dir found");
         // Create venv
@@ -95,13 +95,13 @@ impl LanguageImpl for Python {
             let env = env.clone();
             let new_path = new_path.clone();
 
+            // TODO: combine stdout and stderr
             async move {
                 let output = Command::new(&cmds[0])
                     .args(&cmds[1..])
                     .env("VIRTUAL_ENV", env.as_ref())
                     .env("PATH", new_path.as_ref())
                     .env_remove("PYTHONHOME")
-                    .stderr(std::process::Stdio::inherit())
                     .args(hook_args.as_slice())
                     .args(batch)
                     .output()

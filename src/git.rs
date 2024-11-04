@@ -114,11 +114,10 @@ pub async fn get_staged_files() -> Result<Vec<String>, Error> {
     Ok(zsplit(&output.stdout))
 }
 
-pub async fn has_unmerged_paths(path: &Path) -> Result<bool, Error> {
+pub async fn has_unmerged_paths() -> Result<bool, Error> {
     let output = git_cmd()?
         .arg("ls-files")
         .arg("--unmerged")
-        .current_dir(path)
         .output()
         .await
         .map_err(OutputError::with_cause)?
