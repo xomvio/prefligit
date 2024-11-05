@@ -126,7 +126,7 @@ fn config_not_staged() -> Result<()> {
     Command::new("git")
         .arg("add")
         .arg(".")
-        .current_dir(&context.workdir())
+        .current_dir(context.workdir())
         .assert()
         .success();
 

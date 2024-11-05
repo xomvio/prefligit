@@ -174,6 +174,8 @@ async fn config_not_staged(config: &Path) -> Result<bool> {
         .arg("--quiet") // Implies --exit-code
         .arg("--no-ext-diff")
         .arg(config)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .await?;
 
