@@ -114,6 +114,47 @@ fn invalid_hook_id() -> Result<()> {
     Ok(())
 }
 
+/// `.pre-commit-config.yaml` is not staged.
+#[test]
+fn config_not_staged() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project();
+
+    context.workdir().child(".pre-commit-config.yaml").touch()?;
+
+    Command::new("git")
+        .arg("add")
+        .arg(".")
+        .current_dir(&context.workdir())
+        .assert()
+        .success();
+
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r"
+            repos:
+              - repo: https://github.com/pre-commit/pre-commit-hooks
+                rev: v5.0.0
+                hooks:
+                  - id: trailing-whitespace
+            "
+        })?;
+
+    cmd_snapshot!(context.filters(), context.run().arg("invalid-hook-id"), @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    Your pre-commit configuration is unstaged.
+    `git add .pre-commit-config.yaml` to fix this.
+    "#);
+
+    Ok(())
+}
+
 /// Test the output format for a hook with a CJK name.
 #[test]
 fn cjk_hook_name() -> Result<()> {
@@ -523,6 +564,43 @@ fn log_file() -> Result<()> {
 
     let log = context.read("log.txt");
     assert_snapshot!(log, @"Fixing file.txt");
+
+    Ok(())
+}
+
+/// Pass pre-commit environment variables to the hook.
+#[cfg(unix)]
+#[test]
+fn pass_env_vars() -> Result<()> {
+    let context = TestContext::new();
+
+    context.init_project();
+
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: local
+                hooks:
+                  - id: env-vars
+                    name: Pass environment
+                    language: system
+                    entry: sh -c "echo $PRE_COMMIT > env.txt"
+                    always_run: true
+        "#})?;
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Pass environment.........................................................Passed
+
+    ----- stderr -----
+    "#);
+
+    let env = context.read("env.txt");
+    assert_eq!(env, "1\n");
 
     Ok(())
 }

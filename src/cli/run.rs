@@ -169,7 +169,7 @@ pub(crate) async fn run(
 }
 
 async fn config_not_staged(config: &Path) -> Result<bool> {
-    let output = Command::new(GIT.as_ref()?)
+    let status = Command::new(GIT.as_ref()?)
         .arg("diff")
         .arg("--quiet") // Implies --exit-code
         .arg("--no-ext-diff")
@@ -177,7 +177,7 @@ async fn config_not_staged(config: &Path) -> Result<bool> {
         .status()
         .await?;
 
-    Ok(!output.success())
+    Ok(!status.success())
 }
 
 fn fill_envs(
