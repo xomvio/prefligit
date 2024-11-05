@@ -39,8 +39,9 @@ impl LockedFile {
     /// Inner implementation for [`LockedFile::acquire_blocking`] and [`LockedFile::acquire`].
     fn lock_file_blocking(file: fs_err::File, resource: &str) -> Result<Self, std::io::Error> {
         trace!(
-            "Checking lock for `{resource}` at `{}`",
-            file.path().display(),
+            resource,
+            path = %file.path().display(),
+            "Checking lock",
         );
         match file.file().try_lock_exclusive() {
             Ok(()) => {

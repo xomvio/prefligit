@@ -94,10 +94,10 @@ impl Store {
         // Init the database.
         let db = self.path.join("db.db");
         let conn = if db.try_exists()? {
-            debug!("Opening database: {}", db.display());
+            debug!(db = %db.display(), "Opening database");
             Connection::open(&db)?
         } else {
-            debug!("Creating database: {}", db.display());
+            debug!(db = %db.display(), "Creating database");
             let conn = Connection::open(&db)?;
             conn.execute(
                 "CREATE TABLE repos (
@@ -199,8 +199,8 @@ impl Store {
                 .tempdir_in(&self.path)?;
 
             let path = temp.path().to_string_lossy().to_string();
-            writeln!(printer.stdout(), "Preparing local repo {}", hook.id,)?;
-            debug!("Preparing local repo {} at {}", hook.id, path);
+            writeln!(printer.stdout(), "Preparing local repo {}", hook.id)?;
+            debug!(hook = hook.id, path, "Preparing local repo");
             make_local_repo(LOCAL_NAME, temp.path())?;
             self.insert_repo(LOCAL_NAME, LOCAL_REV, &path, deps)?;
             path

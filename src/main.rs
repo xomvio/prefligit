@@ -138,7 +138,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
 
     // TODO: read git commit info
     debug!("pre-commit: {}", env!("CARGO_PKG_VERSION"));
-    debug!("Git root: {:?}", &root);
+    debug!("Git root: {}", root.display());
 
     macro_rules! show_settings {
         ($arg:expr) => {
