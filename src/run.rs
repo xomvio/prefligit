@@ -330,6 +330,7 @@ fn target_concurrency(serial: bool) -> usize {
     }
 }
 
+// TODO: do a more accurate calculation
 fn partitions<'a>(
     hook: &'a Hook,
     filenames: &'a [&String],
@@ -340,21 +341,27 @@ fn partitions<'a>(
         return vec![vec![]];
     }
 
-    let max_per_batch = max(4, filenames.len() / concurrency);
-    let max_cli_length = 1 << 12;
-    let command_length = hook.entry.len() + hook.args.iter().map(String::len).sum::<usize>();
-    // TODO: env size
+    let max_per_batch = max(4, filenames.len().div_ceil(concurrency));
+    // TODO: subtract the env size
+    let max_cli_length = if cfg!(unix) {
+        1 << 12
+    } else {
+        (1 << 15) - 2048 // UNICODE_STRING max - headroom
+    };
+
+    let command_length =
+        hook.entry.len() + hook.args.iter().map(String::len).sum::<usize>() + hook.args.len();
 
     let mut partitions = Vec::new();
     let mut current = Vec::new();
     let mut current_length = command_length + 1;
 
     for &filename in filenames {
-        let length = filename.len();
+        let length = filename.len() + 1;
         if current_length + length > max_cli_length || current.len() >= max_per_batch {
             partitions.push(current);
             current = Vec::new();
-            current_length = 0;
+            current_length = command_length + 1;
         }
         current.push(filename);
         current_length += length;
