@@ -49,7 +49,7 @@ impl LanguageImpl for System {
             let env_vars = env_vars.clone();
 
             async move {
-                let output = Command::new(&cmds[0])
+                let mut output = Command::new(&cmds[0])
                     .args(&cmds[1..])
                     .args(hook_args.as_ref())
                     .args(batch)
@@ -58,6 +58,7 @@ impl LanguageImpl for System {
                     .output()
                     .await?;
 
+                output.stdout.extend(output.stderr);
                 let code = output.status.code().unwrap_or(1);
                 anyhow::Ok((code, output.stdout))
             }

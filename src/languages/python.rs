@@ -104,7 +104,7 @@ impl LanguageImpl for Python {
 
             // TODO: combine stdout and stderr
             async move {
-                let output = Command::new(&cmds[0])
+                let mut output = Command::new(&cmds[0])
                     .args(&cmds[1..])
                     .env("VIRTUAL_ENV", env_dir.as_ref())
                     .env("PATH", new_path.as_ref())
@@ -115,6 +115,7 @@ impl LanguageImpl for Python {
                     .output()
                     .await?;
 
+                output.stdout.extend(output.stderr);
                 let code = output.status.code().unwrap_or(1);
                 anyhow::Ok((code, output.stdout))
             }
