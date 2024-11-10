@@ -210,7 +210,7 @@ pub(crate) enum HookType {
 }
 
 #[derive(Debug, Clone, Args)]
-pub(crate) struct RunMiscArgs {
+pub(crate) struct RunExtraArgs {
     #[arg(long, hide = true)]
     pub(crate) remote_branch: Option<String>,
     #[arg(long, hide = true)]
@@ -264,7 +264,7 @@ pub(crate) struct RunArgs {
     pub(crate) show_diff_on_failure: bool,
 
     #[command(flatten)]
-    pub(crate) misc: RunMiscArgs,
+    pub(crate) extra: RunExtraArgs,
 }
 
 #[derive(Debug, Args)]

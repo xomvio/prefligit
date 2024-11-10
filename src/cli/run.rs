@@ -11,7 +11,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tokio::process::Command;
 use tracing::{debug, trace};
 
-use crate::cli::{ExitStatus, RunMiscArgs};
+use crate::cli::{ExitStatus, RunExtraArgs};
 use crate::config::Stage;
 use crate::fs::{normalize_path, Simplified};
 use crate::git::{get_all_files, get_changed_files, get_staged_files, has_unmerged_paths, GIT};
@@ -30,7 +30,7 @@ pub(crate) async fn run(
     all_files: bool,
     files: Vec<PathBuf>,
     show_diff_on_failure: bool,
-    misc_args: RunMiscArgs,
+    extra_args: RunExtraArgs,
     verbose: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
@@ -62,7 +62,7 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Success);
     }
 
-    let env_vars = fill_envs(from_ref.as_ref(), to_ref.as_ref(), &misc_args);
+    let env_vars = fill_envs(from_ref.as_ref(), to_ref.as_ref(), &extra_args);
 
     let mut project = Project::new(config_file)?;
     let store = Store::from_settings()?.init()?;
@@ -129,7 +129,7 @@ pub(crate) async fn run(
         to_ref,
         all_files,
         files,
-        misc_args.commit_msg_filename.as_ref(),
+        extra_args.commit_msg_filename.as_ref(),
     )
     .await?;
     for filename in &mut filenames {
@@ -185,7 +185,7 @@ async fn config_not_staged(config: &Path) -> Result<bool> {
 fn fill_envs(
     from_ref: Option<&String>,
     to_ref: Option<&String>,
-    args: &RunMiscArgs,
+    args: &RunExtraArgs,
 ) -> HashMap<&'static str, String> {
     let mut env = HashMap::new();
     env.insert("PRE_COMMIT", "1".into());

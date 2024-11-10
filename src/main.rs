@@ -83,8 +83,8 @@ fn adjust_relative_paths(cli: &mut Cli, new_cwd: &Path) -> Result<()> {
             .iter()
             .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
             .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
-        args.misc.commit_msg_filename = args
-            .misc
+        args.extra.commit_msg_filename = args
+            .extra
             .commit_msg_filename
             .as_ref()
             .map(|path| fs::relative_to(std::path::absolute(path)?, new_cwd))
@@ -180,7 +180,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
                 args.all_files,
                 args.files,
                 args.show_diff_on_failure,
-                args.misc,
+                args.extra,
                 cli.globals.verbose > 0,
                 printer,
             )
