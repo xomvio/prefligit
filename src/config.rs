@@ -113,7 +113,6 @@ impl Display for HookType {
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum Stage {
-    #[value(skip)]
     Manual,
     CommitMsg,
     PostCheckout,
