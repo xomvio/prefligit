@@ -46,6 +46,13 @@ impl TestContext {
                 .map(|pattern| (pattern, "[HOME]/".to_string())),
         );
 
+        let current_exe = assert_cmd::cargo::cargo_bin("pre-commit");
+        filters.extend(
+            Self::path_patterns(&current_exe)
+                .into_iter()
+                .map(|pattern| (pattern, "[CURRENT_EXE]".to_string())),
+        );
+
         Self {
             temp_dir,
             home_dir,
@@ -135,6 +142,18 @@ impl TestContext {
         command
     }
 
+    pub fn install(&self) -> Command {
+        let mut command = self.command();
+        command.arg("install");
+        command
+    }
+
+    pub fn uninstall(&self) -> Command {
+        let mut command = self.command();
+        command.arg("uninstall");
+        command
+    }
+
     /// Standard snapshot filters _plus_ those for this test context.
     pub fn filters(&self) -> Vec<(&str, &str)> {
         // Put test context snapshots before the default filters
@@ -194,7 +213,7 @@ pub const INSTA_FILTERS: &[(&str, &str)] = &[
     (r"(\s|\()(\d+\.)?\d+([KM]i)?B", "$1[SIZE]"),
     // Rewrite Windows output to Unix output
     (r"\\([\w\d]|\.\.)", "/$1"),
-    (r"pre-commit-rs.exe", "pre-commit-rs"),
+    (r"pre-commit.exe", "pre-commit"),
     // The exact message is host language dependent
     (
         r"Caused by: .* \(os error 2\)",
