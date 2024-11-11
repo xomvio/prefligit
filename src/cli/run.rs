@@ -110,7 +110,7 @@ pub(crate) async fn run(
     }
 
     let skips = get_skips();
-    let to_install = hooks
+    let to_run = hooks
         .iter()
         .filter(|h| !skips.contains(&h.id) && !skips.contains(&h.alias))
         .cloned()
@@ -118,9 +118,9 @@ pub(crate) async fn run(
 
     debug!(
         "Hooks going to run: {:?}",
-        to_install.iter().map(|h| &h.id).collect::<Vec<_>>()
+        to_run.iter().map(|h| &h.id).collect::<Vec<_>>()
     );
-    install_hooks(&to_install, printer).await?;
+    install_hooks(&to_run, printer).await?;
     drop(lock);
 
     let mut filenames = all_filenames(
