@@ -8,6 +8,7 @@ It aims to be a drop-in replacement for the original tool while also providing s
 
 > [!WARNING]
 > This project is still in very early development, only a few of the original pre-commit features are implemented.
+> It is not recommended for normal use yet, but feel free to try it out and provide feedback.
 
 ## Features
 
