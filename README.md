@@ -21,19 +21,33 @@ It aims to be a drop-in replacement for the original tool while also providing s
 
 ## Installation
 
-```shell
-# Using brew
-brew install j178/tap/pre-commit-rs
+### Standalone installer
 
-# Using the installer script
+`pre-commit-rs` provides a standalone installer script to download and install the tool:
+
+```console
+# On Linux and macOS
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/pre-commit-rs/releases/latest/download/pre-commit-rs-installer.sh | sh
 
-# Using cargo
-cargo install --git https://github.com/j178/pre-commit-rs
-
-# Download precompiled binaries from GitHub releases, go to:
-https://github.com/j178/pre-commit-rs/releases
+# On Windows
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/j178/pre-commit-rs/releases/latest/download/pre-commit-rs-installer.ps1 | iex"
 ```
+
+### Homebrew
+
+```console
+brew install j178/tap/pre-commit-rs
+```
+
+### Cargo
+
+```console
+cargo install --locked --git https://github.com/j178/pre-commit-rs
+```
+
+### GitHub Releases
+
+`pre-commit-rs` release artifacts can be downloaded directly from the [GitHub releases](https://github.com/j178/pre-commit-rs/releases).
 
 ## Usage
 
