@@ -25,10 +25,7 @@ changelog_sections.performance = "Performance"
 changelog_sections.bug = "Bug fixes"
 changelog_sections.documentation = "Documentation"
 changelog_sections.__unknown__ = "Other changes"
-
-# We exclude contributors from the CHANGELOG file
-# Generate separately with `rooster contributors` for the GitHub release page
-changelog_contributors = false
+changelog_contributors = true
 
 version_files = [
   "README.md",
