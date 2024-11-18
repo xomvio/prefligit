@@ -134,7 +134,7 @@ publish-jobs = ["./publish", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "j178/homebrew-tap"
 # Customize the Homebrew formula name
-formula = "pre-commit"
+formula = "pre-commit-rs"
 # Whether to install an updater program
 install-updater = false
 # Path that installers should place binaries in
