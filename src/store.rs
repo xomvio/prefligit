@@ -175,7 +175,7 @@ impl Store {
     }
 
     /// Prepare a local repo for a local hook.
-    /// All local hooks same additional dependencies, e.g. no dependencies,
+    /// All local hooks with same additional dependencies, e.g. no dependencies,
     /// are stored in the same directory (even they use different language).
     pub fn prepare_local_repo(
         &self,
@@ -294,8 +294,19 @@ impl Store {
 }
 
 // TODO
+/// For local repo, creates a dummy package for each supported language, to make
+/// the installation code like `pip install .` work.
 fn make_local_repo(_repo: &str, path: &Path) -> Result<(), Error> {
     fs_err::create_dir_all(path)?;
+    fs_err::File::create(path.join("__init__.py"))?;
+    fs_err::write(
+        path.join("setup.py"),
+        indoc::indoc! {r#"
+    from setuptools import setup
+
+    setup(name="pre-commit-placeholder-package", version="0.0.0")
+    "#},
+    )?;
 
     Ok(())
 }

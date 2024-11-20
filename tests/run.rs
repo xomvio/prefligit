@@ -75,6 +75,74 @@ fn run_basic() -> Result<()> {
 }
 
 #[test]
+fn local() -> Result<()> {
+    let context = TestContext::new();
+    context.init_project();
+
+    let cwd = context.workdir();
+    cwd.child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r"
+            repos:
+              - repo: local
+                hooks:
+                  - id: local
+                    name: local
+                    language: system
+                    entry: echo Hello, world!
+                    always_run: true
+        "})?;
+
+    context.git_add(".");
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    local....................................................................Passed
+
+    ----- stderr -----
+    "#);
+
+    Ok(())
+}
+
+#[test]
+fn local_need_install() -> Result<()> {
+    let context = TestContext::new();
+    context.init_project();
+
+    context
+        .workdir()
+        .child(".pre-commit-config.yaml")
+        .write_str(indoc::indoc! {r#"
+            repos:
+              - repo: local
+                hooks:
+                  - id: local
+                    name: local
+                    language: python
+                    entry: pyecho Hello, world!
+                    additional_dependencies: ["pyecho-cli"]
+                    always_run: true
+        "#})?;
+
+    context.git_add(".");
+
+    cmd_snapshot!(context.filters(), context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Preparing local repo local
+    Installing environment for local
+    local....................................................................Passed
+
+    ----- stderr -----
+    "#);
+
+    Ok(())
+}
+
+#[test]
 fn invalid_hook_id() {
     let context = TestContext::new();
 
