@@ -1,10 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{BufRead, Read};
-#[cfg(unix)]
-use std::os::unix::fs::FileTypeExt;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::vec;
@@ -644,6 +640,8 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<&str>> {
     }
     #[cfg(unix)]
     {
+        use std::os::unix::fs::FileTypeExt;
+
         let file_type = metadata.file_type();
         if file_type.is_socket() {
             return Ok(vec![tags::SOCKET]);
@@ -659,10 +657,10 @@ pub fn tags_from_path(path: &Path) -> Result<Vec<&str>> {
     let mut tags = HashSet::new();
     tags.insert(tags::FILE);
 
-    #[cfg(unix)]
-    let executable = metadata.permissions().mode() & 0o111 != 0;
-    #[cfg(not(unix))]
-    let executable = {
+    let executable = if cfg!(unix) {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    } else {
         let ext = path.extension().and_then(|ext| ext.to_str());
         ext.map_or(false, |ext| ext == "exe" || ext == "bat" || ext == "cmd")
     };
