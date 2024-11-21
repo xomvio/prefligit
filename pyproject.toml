@@ -1,6 +1,6 @@
 [project]
 name = "pre-commit-rusty"
-version = "0.0.3"
+version = "0.0.4"
 description = "pre-commit reimplemented in Rust"
 authors = [{ name = "j178", email = "hi@j178.dev" }]
 requires-python = ">=3.8"
@@ -29,7 +29,7 @@ build-backend = "maturin"
 [tool.maturin]
 bindings = "bin"
 include = [
-  { path = "licenses/*", format = ["whell", "sdist"]}
+  { path = "licenses/*", format = ["wheel", "sdist"]}
 ]
 
 [tool.rooster]
