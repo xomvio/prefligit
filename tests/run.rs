@@ -1,5 +1,6 @@
 use anyhow::Result;
 use assert_fs::prelude::*;
+use insta::assert_snapshot;
 
 use crate::common::{cmd_snapshot, TestContext};
 
@@ -52,6 +53,8 @@ fn run_basic() -> Result<()> {
     ----- stderr -----
     "#);
 
+    context.git_add(".");
+
     cmd_snapshot!(context.filters(), context.run().arg("trailing-whitespace"), @r#"
     success: true
     exit_code: 0
@@ -60,6 +63,8 @@ fn run_basic() -> Result<()> {
 
     ----- stderr -----
     "#);
+
+    context.git_add(".");
 
     cmd_snapshot!(context.filters(), context.run().arg("typos").arg("--hook-stage").arg("pre-push"), @r#"
     success: false
@@ -599,4 +604,113 @@ fn pass_env_vars() {
 
     let env = context.read("env.txt");
     assert_eq!(env, "1\n");
+}
+
+#[test]
+fn staged_files_only() -> Result<()> {
+    let context = TestContext::new();
+    context.init_project();
+    context.write_pre_commit_config(indoc::indoc! {r#"
+        repos:
+          - repo: local
+            hooks:
+              - id: trailing-whitespace
+                name: trailing-whitespace
+                language: system
+                entry: python3 -c 'print(open("file.txt", "rt").read())'
+                verbose: true
+                types: [text]
+   "#});
+
+    context
+        .workdir()
+        .child("file.txt")
+        .write_str("Hello, world!")?;
+    context.git_add(".");
+
+    // Non-staged files should be stashed and restored.
+    context
+        .workdir()
+        .child("file.txt")
+        .write_str("Hello world again!")?;
+
+    let filters: Vec<_> = context
+        .filters()
+        .into_iter()
+        .chain([(r"/\d+-\d+.patch", "/[TIME]-[PID].patch")])
+        .collect();
+
+    cmd_snapshot!(filters, context.run(), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    trailing-whitespace......................................................Passed
+    - hook id: trailing-whitespace
+    - duration: [TIME]
+      Hello, world!
+
+    ----- stderr -----
+    Non-staged changes detected, saving to `[HOME]/[TIME]-[PID].patch`
+
+    Restored working tree changes from `[HOME]/[TIME]-[PID].patch`
+    "#);
+
+    let content = context.read("file.txt");
+    assert_snapshot!(content, @"Hello world again!");
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_on_interrupt() -> Result<()> {
+    let context = TestContext::new();
+    context.init_project();
+    // The hook will sleep for 3 seconds.
+    context.write_pre_commit_config(indoc::indoc! {r#"
+        repos:
+          - repo: local
+            hooks:
+              - id: trailing-whitespace
+                name: trailing-whitespace
+                language: system
+                entry: python3 -c 'import time; open("out.txt", "wt").write(open("file.txt", "rt").read()); time.sleep(10)'
+                verbose: true
+                types: [text]
+   "#});
+
+    context
+        .workdir()
+        .child("file.txt")
+        .write_str("Hello, world!")?;
+    context.git_add(".");
+
+    // Non-staged files should be stashed and restored.
+    context
+        .workdir()
+        .child("file.txt")
+        .write_str("Hello world again!")?;
+
+    let mut child = context.run().spawn()?;
+    let child_id = child.id();
+
+    // Send an interrupt signal to the process.
+    let handle = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        #[allow(clippy::cast_possible_wrap)]
+        unsafe {
+            libc::kill(child_id as i32, libc::SIGINT)
+        };
+    });
+
+    handle.join().unwrap();
+    child.wait()?;
+
+    let content = context.read("out.txt");
+    assert_snapshot!(content, @"Hello, world!");
+
+    let content = context.read("file.txt");
+    assert_snapshot!(content, @"Hello world again!");
+
+    Ok(())
 }

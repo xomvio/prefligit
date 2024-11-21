@@ -13,11 +13,10 @@ use tracing::{debug, trace};
 use crate::cli::{ExitStatus, RunExtraArgs};
 use crate::config::Stage;
 use crate::fs::{normalize_path, Simplified};
-use crate::git::{get_all_files, get_changed_files, get_staged_files, has_unmerged_paths, GIT};
+use crate::git;
 use crate::hook::{Hook, Project};
 use crate::printer::Printer;
-use crate::process::Cmd;
-use crate::run::{run_hooks, FilenameFilter};
+use crate::run::{run_hooks, FilenameFilter, WorkTreeKeeper};
 use crate::store::Store;
 
 #[allow(clippy::too_many_arguments)]
@@ -34,10 +33,17 @@ pub(crate) async fn run(
     verbose: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
+    // Prevent recursive post-checkout hooks.
+    if matches!(hook_stage, Some(Stage::PostCheckout))
+        && std::env::var_os("_PRE_COMMIT_SKIP_POST_CHECKOUT").is_some()
+    {
+        return Ok(ExitStatus::Success);
+    }
+
     let should_stash = !all_files && files.is_empty();
 
     // Check if we have unresolved merge conflict files and fail fast.
-    if should_stash && has_unmerged_paths().await? {
+    if should_stash && git::has_unmerged_paths().await? {
         writeln!(
             printer.stderr(),
             "You have unmerged paths. Resolve them before running pre-commit."
@@ -55,20 +61,11 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Failure);
     }
 
-    // Prevent recursive post-checkout hooks.
-    if matches!(hook_stage, Some(Stage::PostCheckout))
-        && std::env::var_os("_PRE_COMMIT_SKIP_POST_CHECKOUT").is_some()
-    {
-        return Ok(ExitStatus::Success);
-    }
-
+    // Set env vars for hooks.
     let env_vars = fill_envs(from_ref.as_ref(), to_ref.as_ref(), &extra_args);
 
     let mut project = Project::new(config_file)?;
     let store = Store::from_settings()?.init()?;
-
-    // TODO: fill env vars
-    // TODO: impl staged_files_only
 
     let lock = store.lock_async().await?;
     let hooks = project.init_hooks(&store, printer).await?;
@@ -123,6 +120,12 @@ pub(crate) async fn run(
     install_hooks(&to_run, printer).await?;
     drop(lock);
 
+    // Clear any unstaged changes from the git working directory.
+    let mut _guard = None;
+    if should_stash {
+        _guard = Some(WorkTreeKeeper::clean(&store).await?);
+    }
+
     let mut filenames = all_filenames(
         hook_stage,
         from_ref,
@@ -167,7 +170,7 @@ pub(crate) async fn run(
 }
 
 async fn config_not_staged(config: &Path) -> Result<bool> {
-    let status = Cmd::new(GIT.as_ref()?, "git diff")
+    let status = git::git_cmd("git diff")?
         .arg("diff")
         .arg("--quiet") // Implies --exit-code
         .arg("--no-ext-diff")
@@ -266,7 +269,7 @@ async fn all_filenames(
             .to_string()]);
     }
     if let (Some(from_ref), Some(to_ref)) = (from_ref, to_ref) {
-        let files = get_changed_files(&from_ref, &to_ref).await?;
+        let files = git::get_changed_files(&from_ref, &to_ref).await?;
         debug!(
             "Files changed between {} and {}: {}",
             from_ref,
@@ -285,7 +288,7 @@ async fn all_filenames(
         return Ok(files);
     }
     if all_files {
-        let files = get_all_files().await?;
+        let files = git::get_all_files().await?;
         debug!("All files in the repo: {}", files.len());
         return Ok(files);
     }
@@ -293,7 +296,7 @@ async fn all_filenames(
     // if is_in_merge_conflict() {
     //     return get_conflicted_files();
     // }
-    let files = get_staged_files().await?;
+    let files = git::get_staged_files().await?;
     debug!("Staged files: {}", files.len());
     Ok(files)
 }
@@ -304,7 +307,7 @@ async fn install_hook(hook: &Hook, env_dir: PathBuf, printer: Printer) -> Result
         "Installing environment for {}",
         hook.repo(),
     )?;
-    debug!("Install environment for {} to {}", hook, env_dir.display());
+    debug!(%hook, target = %env_dir.display(), "Install environment");
 
     if env_dir.try_exists()? {
         debug!(
