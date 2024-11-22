@@ -172,6 +172,7 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
                 args.overwrite,
                 args.allow_missing_config,
                 printer,
+                None,
             )
             .await
         }
@@ -240,6 +241,18 @@ async fn run(mut cli: Cli) -> Result<ExitStatus> {
                 .to_owned();
             clap_complete::generate(args.shell, &mut command, bin_name, &mut std::io::stdout());
             Ok(ExitStatus::Success)
+        }
+        Command::InitTemplateDir(args) => {
+            show_settings!(args);
+
+            cli::init_template_dir(
+                args.directory,
+                cli.globals.config,
+                args.hook_types,
+                args.no_allow_missing_config,
+                printer,
+            )
+            .await
         }
         _ => {
             writeln!(printer.stderr(), "Command not implemented yet")?;
