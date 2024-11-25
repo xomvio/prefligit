@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::hook::Hook;
+use crate::languages::docker::Docker;
 use crate::languages::{LanguageImpl, DEFAULT_VERSION};
-use crate::process::Cmd;
 use crate::run::run_by_batch;
 
 #[derive(Debug, Copy, Clone)]
-pub struct System;
+pub struct DockerImage;
 
-impl LanguageImpl for System {
+impl LanguageImpl for DockerImage {
     fn default_version(&self) -> &str {
         DEFAULT_VERSION
     }
@@ -18,12 +18,12 @@ impl LanguageImpl for System {
         None
     }
 
-    async fn install(&self, _hook: &Hook) -> anyhow::Result<()> {
+    async fn install(&self, _: &Hook) -> anyhow::Result<()> {
         Ok(())
     }
 
     async fn check_health(&self) -> anyhow::Result<()> {
-        Ok(())
+        todo!()
     }
 
     async fn run(
@@ -43,15 +43,15 @@ impl LanguageImpl for System {
             let env_vars = env_vars.clone();
 
             async move {
-                let mut output = Cmd::new(&cmds[0], "run system command")
-                    .args(&cmds[1..])
+                let mut cmd = Docker::docker_cmd().await?;
+                let cmd = cmd
+                    .args(&cmds[..])
                     .args(hook_args.as_ref())
                     .args(batch)
-                    .envs(env_vars.as_ref())
                     .check(false)
-                    .output()
-                    .await?;
+                    .envs(env_vars.as_ref());
 
+                let mut output = cmd.output().await?;
                 output.stdout.extend(output.stderr);
                 let code = output.status.code().unwrap_or(1);
                 anyhow::Ok((code, output.stdout))

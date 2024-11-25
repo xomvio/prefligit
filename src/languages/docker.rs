@@ -126,7 +126,7 @@ impl Docker {
         Ok(Cow::Borrowed(path))
     }
 
-    async fn docker_cmd() -> Result<Cmd> {
+    pub(crate) async fn docker_cmd() -> Result<Cmd> {
         let mut command = Cmd::new("docker", "run container");
         command.arg("run").arg("--rm");
 
@@ -212,7 +212,7 @@ impl LanguageImpl for Docker {
                     .args(&cmds[1..])
                     .args(hook_args.as_ref())
                     .args(batch)
-                    .stderr(std::process::Stdio::inherit())
+                    .check(false)
                     .envs(env_vars.as_ref());
 
                 let mut output = cmd.output().await?;

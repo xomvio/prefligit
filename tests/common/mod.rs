@@ -181,6 +181,7 @@ impl TestContext {
     pub fn init_project(&self) {
         Command::new("git")
             .arg("init")
+            .arg("--initial-branch=master")
             .current_dir(&self.temp_dir)
             .assert()
             .success();
@@ -247,7 +248,7 @@ pub const INSTA_FILTERS: &[(&str, &str)] = &[
         "Caused by: No such file or directory (os error 2)",
     ),
     // Time seconds
-    (r"(\d+\.)?\d+s", "[TIME]"),
+    (r"(\d+\.)?\d+(ms|s)", "[TIME]"),
 ];
 
 #[allow(unused_macros)]
