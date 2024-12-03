@@ -1,18 +1,14 @@
 [package]
-name = "pre-commit-rs"
-version = "0.0.5"
+name = "prefligit"
+version = "0.0.6"
 authors = ["j178 <hi@j178.dev>"]
 description = "pre-commit implemeneted in Rust"
-repository = "https://github.com/j178/pre-commit-rs"
-homepage = "https://github.com/j178/pre-commit-rs"
+repository = "https://github.com/j178/prefligit"
+homepage = "https://github.com/j178/prefligit"
 edition = "2021"
 license-file = "LICENSE"
 # `cargo publish` failed because of this, disabled for now.
 # include = ["licenses/.*"]
-
-[[bin]]
-path = "src/main.rs"
-name = "pre-commit"
 
 [features]
 default = ["docker"]
@@ -143,7 +139,7 @@ publish-jobs = ["./publish", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "j178/homebrew-tap"
 # Customize the Homebrew formula name
-formula = "pre-commit-rs"
+formula = "prefligit"
 # Whether to install an updater program
 install-updater = false
 # Path that installers should place binaries in

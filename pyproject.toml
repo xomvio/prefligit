@@ -1,6 +1,6 @@
 [project]
-name = "pre-commit-rusty"
-version = "0.0.5"
+name = "prefligit"
+version = "0.0.6"
 description = "pre-commit reimplemented in Rust"
 authors = [{ name = "j178", email = "hi@j178.dev" }]
 requires-python = ">=3.8"
@@ -18,9 +18,9 @@ classfiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/j178/pre-commit-rs"
-Changelog = "https://github.com/j178/pre-commit-rs/blob/main/CHANGELOG.md"
-Releases = "https://github.com/j178/pre-commit-rs/releases"
+Repository = "https://github.com/j178/prefligit"
+Changelog = "https://github.com/j178/prefligit/blob/main/CHANGELOG.md"
+Releases = "https://github.com/j178/prefligit/releases"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

@@ -76,7 +76,7 @@ impl From<ColorChoice> for anstream::ColorChoice {
 
 #[derive(Parser)]
 #[command(
-    name = "pre-commit",
+    name = "prefligit",
     author,
     version,
     about = "pre-commit reimplemented in Rust"
@@ -135,7 +135,7 @@ pub(crate) struct GlobalArgs {
     #[arg(global = true, short, long, action = ArgAction::Count)]
     pub(crate) verbose: u8,
 
-    /// Display the pre-commit version.
+    /// Display the prefligit version.
     #[arg(global = true, short = 'V', long, action = clap::ArgAction::Version)]
     version: Option<bool>,
 
@@ -148,14 +148,14 @@ pub(crate) struct GlobalArgs {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    /// Install the git pre-commit hook.
+    /// Install the git prefligit hook.
     #[command(name = "install")]
     Install(InstallArgs),
     /// Create hook environments for all hooks used in the config file.
     InstallHooks,
     /// Run hooks.
     Run(Box<RunArgs>),
-    /// Uninstall the pre-commit script.
+    /// Uninstall the prefligit script.
     Uninstall(UninstallArgs),
     /// Validate `.pre-commit-config.yaml` files.
     ValidateConfig(ValidateConfigArgs),
@@ -180,7 +180,7 @@ pub(crate) enum Command {
     #[command(hide = true)]
     HookImpl(HookImplArgs),
 
-    /// `pre-commit-rs` self management.
+    /// `prefligit` self management.
     #[command(name = "self")]
     Self_(SelfNamespace),
 
@@ -317,14 +317,14 @@ pub struct SelfNamespace {
 
 #[derive(Debug, Subcommand)]
 pub enum SelfCommand {
-    /// Update pre-commit-rs.
+    /// Update prefligit.
     Update(SelfUpdateArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct SelfUpdateArgs {
     /// Update to the specified version.
-    /// If not provided, pre-commit-rs will update to the latest version.
+    /// If not provided, prefligit will update to the latest version.
     pub target_version: Option<String>,
 
     /// A GitHub token for authentication.
