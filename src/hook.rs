@@ -13,8 +13,8 @@ use tracing::{debug, error};
 use url::Url;
 
 use crate::config::{
-    self, read_config, read_manifest, ConfigLocalHook, ConfigRemoteHook, ConfigRepo, ConfigWire,
-    Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
+    self, read_config, read_manifest, ConfigLocalHook, ConfigMetaHook, ConfigRemoteHook,
+    ConfigRepo, ConfigWire, Language, ManifestHook, Stage, CONFIG_FILE, MANIFEST_FILE,
 };
 use crate::fs::{Simplified, CWD};
 use crate::languages::DEFAULT_VERSION;
@@ -47,7 +47,9 @@ pub enum Repo {
     Local {
         hooks: Vec<ManifestHook>,
     },
-    Meta,
+    Meta {
+        hooks: Vec<ManifestHook>,
+    },
 }
 
 impl Repo {
@@ -72,8 +74,11 @@ impl Repo {
         Self::Local { hooks }
     }
 
-    pub fn meta() -> Result<Self, Error> {
-        todo!()
+    /// Construct a meta repo.
+    pub fn meta(hooks: Vec<ConfigMetaHook>) -> Self {
+        Self::Meta {
+            hooks: hooks.into_iter().map(ManifestHook::from).collect(),
+        }
     }
 
     /// Get a hook by id.
@@ -81,16 +86,17 @@ impl Repo {
         let hooks = match self {
             Repo::Remote { ref hooks, .. } => hooks,
             Repo::Local { ref hooks } => hooks,
-            Repo::Meta => return None,
+            Repo::Meta { ref hooks } => hooks,
         };
         hooks.iter().find(|hook| hook.id == id)
     }
 
+    /// Get the path to the repo.
     pub fn path(&self) -> &Path {
         match self {
             Repo::Remote { ref path, .. } => path,
             Repo::Local { .. } => &CWD,
-            Repo::Meta => todo!(),
+            Repo::Meta { .. } => &CWD,
         }
     }
 }
@@ -100,7 +106,7 @@ impl Display for Repo {
         match self {
             Repo::Remote { url, rev, .. } => write!(f, "{url}@{rev}"),
             Repo::Local { .. } => write!(f, "local"),
-            Repo::Meta => write!(f, "meta"),
+            Repo::Meta { .. } => write!(f, "meta"),
         }
     }
 }
@@ -195,8 +201,9 @@ impl Project {
                     let repo = Repo::local(repo.hooks.clone());
                     repos.push(Rc::new(repo));
                 }
-                ConfigRepo::Meta(_) => {
-                    todo!()
+                ConfigRepo::Meta(repo) => {
+                    let repo = Repo::meta(repo.hooks.clone());
+                    repos.push(Rc::new(repo));
                 }
             }
         }
@@ -273,8 +280,18 @@ impl Project {
                         hooks.push(hook);
                     }
                 }
-                ConfigRepo::Meta(_) => {
-                    todo!()
+                ConfigRepo::Meta(repo_config) => {
+                    for hook_config in &repo_config.hooks {
+                        let repo = Rc::clone(repo);
+                        let hook_config = ManifestHook::from(hook_config.clone());
+                        let mut builder = HookBuilder::new(repo, hook_config);
+                        builder.combine(&self.config);
+                        let mut hook = builder.build();
+
+                        let path = hook.repo.path().to_path_buf();
+                        hook = hook.with_path(path);
+                        hooks.push(hook);
+                    }
                 }
             }
         }
@@ -303,36 +320,6 @@ impl HookBuilder {
 
     /// Update the hook from the project level hook configuration.
     fn update(&mut self, config: &ConfigRemoteHook) -> &mut Self {
-        macro_rules! update_if_some {
-            ($($field:ident),* $(,)?) => {
-                $(
-                if config.$field.is_some() {
-                    self.config.$field.clone_from(&config.$field);
-                }
-                )*
-            };
-        }
-        update_if_some!(
-            alias,
-            files,
-            exclude,
-            types,
-            types_or,
-            exclude_types,
-            additional_dependencies,
-            args,
-            always_run,
-            fail_fast,
-            pass_filenames,
-            description,
-            language_version,
-            log_file,
-            require_serial,
-            stages,
-            verbose,
-            minimum_pre_commit_version,
-        );
-
         if let Some(name) = &config.name {
             self.config.name.clone_from(name);
         }
@@ -343,62 +330,64 @@ impl HookBuilder {
             self.config.language.clone_from(language);
         }
 
+        self.config.options.update(&config.options);
+
         self
     }
 
     /// Combine the hook configuration with the project level hook configuration.
     fn combine(&mut self, config: &ConfigWire) {
+        let options = &mut self.config.options;
         let language = self.config.language;
-        if self.config.language_version.is_none() {
-            self.config.language_version = config
+        if options.language_version.is_none() {
+            options.language_version = config
                 .default_language_version
                 .as_ref()
                 .and_then(|v| v.get(&language).cloned());
         }
-        if self.config.language_version.is_none() {
-            self.config.language_version = Some(language.default_version().to_string());
+        if options.language_version.is_none() {
+            options.language_version = Some(language.default_version().to_string());
         }
 
-        if self.config.stages.is_none() {
-            self.config.stages.clone_from(&config.default_stages);
+        if options.stages.is_none() {
+            options.stages.clone_from(&config.default_stages);
         }
     }
 
     /// Fill in the default values for the hook configuration.
     fn fill_in_defaults(&mut self) {
-        self.config
+        let options = &mut self.config.options;
+        options
             .language_version
             .get_or_insert(DEFAULT_VERSION.to_string());
-        self.config.alias.get_or_insert(String::new());
-        self.config.args.get_or_insert(Vec::new());
-        self.config.types.get_or_insert(vec!["file".to_string()]);
-        self.config.types_or.get_or_insert(Vec::new());
-        self.config.exclude_types.get_or_insert(Vec::new());
-        self.config.always_run.get_or_insert(false);
-        self.config.fail_fast.get_or_insert(false);
-        self.config.pass_filenames.get_or_insert(true);
-        self.config.require_serial.get_or_insert(false);
-        self.config.verbose.get_or_insert(false);
-        self.config
+        options.alias.get_or_insert(String::new());
+        options.args.get_or_insert(Vec::new());
+        options.types.get_or_insert(vec!["file".to_string()]);
+        options.types_or.get_or_insert(Vec::new());
+        options.exclude_types.get_or_insert(Vec::new());
+        options.always_run.get_or_insert(false);
+        options.fail_fast.get_or_insert(false);
+        options.pass_filenames.get_or_insert(true);
+        options.require_serial.get_or_insert(false);
+        options.verbose.get_or_insert(false);
+        options
             .stages
             .get_or_insert(Stage::value_variants().to_vec());
-        self.config
-            .additional_dependencies
-            .get_or_insert(Vec::new());
+        options.additional_dependencies.get_or_insert(Vec::new());
     }
 
     /// Check the hook configuration.
     fn check(&self) {
         let language = self.config.language;
         if language.environment_dir().is_none() {
-            if self.config.language_version != Some(DEFAULT_VERSION.to_string()) {
+            if self.config.options.language_version != Some(DEFAULT_VERSION.to_string()) {
                 warn_user!(
                     "Language {} does not need environment, but language_version is set",
                     language
                 );
             }
 
-            if self.config.additional_dependencies.is_some() {
+            if self.config.options.additional_dependencies.is_some() {
                 warn_user!(
                     "Language {} does not need environment, but additional_dependencies is set",
                     language
@@ -412,6 +401,7 @@ impl HookBuilder {
         self.check();
         self.fill_in_defaults();
 
+        let options = self.config.options;
         Hook {
             repo: self.repo,
             path: None,
@@ -419,30 +409,26 @@ impl HookBuilder {
             name: self.config.name,
             entry: self.config.entry,
             language: self.config.language,
-            alias: self.config.alias.expect("alias not set"),
-            files: self.config.files,
-            exclude: self.config.exclude,
-            types: self.config.types.expect("types not set"),
-            types_or: self.config.types_or.expect("types_or not set"),
-            exclude_types: self.config.exclude_types.expect("exclude_types not set"),
-            additional_dependencies: self
-                .config
+            alias: options.alias.expect("alias not set"),
+            files: options.files,
+            exclude: options.exclude,
+            types: options.types.expect("types not set"),
+            types_or: options.types_or.expect("types_or not set"),
+            exclude_types: options.exclude_types.expect("exclude_types not set"),
+            additional_dependencies: options
                 .additional_dependencies
                 .expect("additional_dependencies should not be None"),
-            args: self.config.args.expect("args not set"),
-            always_run: self.config.always_run.expect("always_run not set"),
-            fail_fast: self.config.fail_fast.expect("fail_fast not set"),
-            pass_filenames: self.config.pass_filenames.expect("pass_filenames not set"),
-            description: self.config.description,
-            language_version: self
-                .config
-                .language_version
-                .expect("language_version not set"),
-            log_file: self.config.log_file,
-            require_serial: self.config.require_serial.expect("require_serial not set"),
-            stages: self.config.stages.expect("stages not set"),
-            verbose: self.config.verbose.expect("verbose not set"),
-            minimum_pre_commit_version: self.config.minimum_pre_commit_version,
+            args: options.args.expect("args not set"),
+            always_run: options.always_run.expect("always_run not set"),
+            fail_fast: options.fail_fast.expect("fail_fast not set"),
+            pass_filenames: options.pass_filenames.expect("pass_filenames not set"),
+            description: options.description,
+            language_version: options.language_version.expect("language_version not set"),
+            log_file: options.log_file,
+            require_serial: options.require_serial.expect("require_serial not set"),
+            stages: options.stages.expect("stages not set"),
+            verbose: options.verbose.expect("verbose not set"),
+            minimum_pre_commit_version: options.minimum_pre_commit_version,
         }
     }
 }
