@@ -100,8 +100,9 @@ pub(crate) async fn fix_trailing_whitespace(
                     .and_then(|ext| ext.to_str())
                     .map(|ext| format!(".{}", ext.to_ascii_lowercase()));
                 let is_markdown =
-                    force_markdown || ext.map_or(false, |ext| markdown_exts.contains(&ext));
+                    force_markdown || ext.is_some_and(|ext| markdown_exts.contains(&ext));
 
+                // TODO: read file in chunks
                 let content = tokio::fs::read(filename).await?;
 
                 let mut modified = false;
@@ -162,7 +163,7 @@ pub(crate) async fn fix_trailing_whitespace(
                 }
             }
         })
-        .buffer_unordered(*CONCURRENCY);
+        .buffered(*CONCURRENCY);
 
     let mut code = 0;
     let mut output = Vec::new();
