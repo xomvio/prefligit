@@ -27,8 +27,9 @@ while also providing some additional opinionated features.
 
 ## Installation
 
-### Standalone installer
-
+<details>
+<summary>Standalone installer</summary>
+  
 `prefligit` provides a standalone installer script to download and install the tool:
 
 ```console
@@ -38,8 +39,10 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prefligit/releases
 # On Windows
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/j178/prefligit/releases/download/v0.0.8/prefligit-installer.ps1 | iex"
 ```
+</details>
 
-### PyPI
+<details>
+<summary>PyPI</summary>
 
 `prefligit` is published as Python binary wheel to PyPI, you can install it using `pip`, `uv` (recommended), or `pipx`:
 
@@ -54,14 +57,18 @@ uv tool install prefligit
 
 pipx install prefligit
 ```
+</details>
 
-### Homebrew
+<details>
+<summary>Homebrew</summary>
 
 ```console
 brew install j178/tap/prefligit
 ```
+</details>
 
-### Cargo
+<details>
+<summary>Cargo</summary>
 
 Build from source using Cargo:
 
@@ -74,10 +81,14 @@ Install from the binary directly using `cargo binstall`:
 ```console
 cargo binstall prefligit
 ```
+</details>
 
-### GitHub Releases
+<details>
+<summary>GitHub Releases</summary>
 
 `prefligit` release artifacts can be downloaded directly from the [GitHub releases](https://github.com/j178/prefligit/releases).
+</details>
+
 
 ## Usage
 
