@@ -200,6 +200,7 @@ impl UvInstaller {
 
     pub async fn install() -> Result<PathBuf> {
         // 1) Check if `uv` is installed already.
+        // TODO: check minimum supported uv version
         if let Ok(uv) = which::which("uv") {
             trace!(uv = %uv.display(), "Found uv from PATH");
             return Ok(uv);
