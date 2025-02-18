@@ -379,7 +379,7 @@ impl HookBuilder {
                     "Language {} does not need environment, but language_version is set",
                     language
                 );
-            } else if !language.allow_specify_version() {
+            } else if !language.supports_language_version() {
                 warn_user!(
                     "Language {} does not support specifying version, but language_version is set",
                     language
@@ -532,6 +532,7 @@ impl Hash for Hook {
         }
 
         self.language.as_str().hash(state);
+        // TODO: should we resolve the language version first?
         self.language_version.as_str().hash(state);
         self.additional_dependencies.hash(state);
     }
