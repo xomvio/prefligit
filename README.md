@@ -76,6 +76,7 @@ Build from source using Cargo:
 ```console
 cargo install --locked --git https://github.com/j178/prefligit
 ```
+</details>
 
 <details>
 <summary>GitHub Releases</summary>
