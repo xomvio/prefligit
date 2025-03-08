@@ -59,6 +59,7 @@ impl<'a> Partitions<'a> {
 }
 
 impl<'a> Iterator for Partitions<'a> {
+    // TODO: produce slices instead of Vec
     type Item = Vec<&'a String>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -119,6 +120,7 @@ where
 
     let mut tasks = futures::stream::iter(partitions)
         .map(|batch| {
+            // TODO: avoid this allocation
             let batch: Vec<_> = batch.into_iter().map(ToString::to_string).collect();
             run(batch)
         })
