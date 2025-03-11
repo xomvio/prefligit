@@ -379,7 +379,7 @@ pub async fn has_hooks_path_set() -> Result<bool> {
 }
 
 pub async fn lfs_files<T: FromIterator<String>>(paths: &[&String]) -> Result<T, Error> {
-    let mut job = git_cmd("check the file is lfs file or not")?
+    let mut job = git_cmd("git check-attr")?
         .arg("check-attr")
         .arg("filter")
         .arg("-z")

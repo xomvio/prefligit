@@ -1,9 +1,11 @@
+use std::collections::{HashMap, HashSet};
+
+use clap::Parser;
+use futures::StreamExt;
+
 use crate::git::{intent_to_add_files, lfs_files};
 use crate::hook::Hook;
 use crate::run::CONCURRENCY;
-use clap::Parser;
-use futures::StreamExt;
-use std::collections::{HashMap, HashSet};
 
 enum FileFilter {
     NoFilter,
@@ -50,26 +52,24 @@ pub(crate) async fn check_added_large_files(
             .filter(|f| !lfs_files.contains(f.as_str())),
     )
     .map(async |filename| {
-        let len = fs_err::tokio::metadata(filename).await?.len();
-        if len > args.max_kb * 1024 {
+        let size = fs_err::tokio::metadata(filename).await?.len();
+        let size = size / 1024;
+        if size > args.max_kb {
             anyhow::Ok(Some(format!(
-                "{filename} ({kb} KB) exceeds {max_kb} KB\n",
-                filename = filename,
-                kb = len / 1024,
-                max_kb = args.max_kb
+                "{filename} ({size} KB) exceeds {} KB\n",
+                args.max_kb
             )))
         } else {
             anyhow::Ok(None)
         }
     })
-    .boxed()
     .buffered(*CONCURRENCY);
 
     let mut code = 0;
     let mut output = Vec::new();
 
     while let Some(result) = tasks.next().await {
-        if let Ok(Some(e)) = result {
+        if let Some(e) = result? {
             code = 1;
             output.extend(e.into_bytes());
         }
