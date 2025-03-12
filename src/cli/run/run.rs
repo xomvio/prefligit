@@ -1,5 +1,5 @@
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -7,10 +7,12 @@ use std::path::{Path, PathBuf};
 use anstream::ColorChoice;
 use anyhow::Result;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use itertools::Itertools;
 use owo_colors::{OwoColorize, Style};
 use rand::SeedableRng;
 use rand::prelude::{SliceRandom, StdRng};
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, trace};
 use unicode_width::UnicodeWidthStr;
 
@@ -23,9 +25,14 @@ use crate::cli::{ExitStatus, RunExtraArgs};
 use crate::config::Stage;
 use crate::fs::Simplified;
 use crate::git;
-use crate::hook::{Hook, Project};
+use crate::hook::{Hook, Project, ResolvedHook};
 use crate::printer::Printer;
 use crate::store::Store;
+
+enum HookToRun {
+    Skipped(Hook),
+    ToRun(ResolvedHook),
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run(
@@ -83,19 +90,11 @@ pub(crate) async fn run(
     let hooks: Vec<_> = hooks
         .into_iter()
         .filter(|h| {
-            if let Some(ref hook) = hook_id {
-                &h.id == hook || &h.alias == hook
-            } else {
-                true
-            }
+            hook_id
+                .as_deref()
+                .is_none_or(|hook_id| h.id == hook_id || h.alias == hook_id)
         })
-        .filter(|h| {
-            if let Some(stage) = hook_stage {
-                h.stages.contains(&stage)
-            } else {
-                true
-            }
-        })
+        .filter(|h| hook_stage.is_none_or(|stage| h.stages.contains(&stage)))
         .collect();
 
     if hooks.is_empty() && hook_id.is_some() {
@@ -117,9 +116,14 @@ pub(crate) async fn run(
     }
 
     let skips = get_skips();
+    let skips = hooks
+        .iter()
+        .filter(|h| skips.contains(&h.id) || skips.contains(&h.alias))
+        .map(|h| h.idx)
+        .collect::<HashSet<_>>();
     let to_run = hooks
         .iter()
-        .filter(|h| !skips.contains(&h.id) && !skips.contains(&h.alias))
+        .filter(|h| !skips.contains(&h.idx))
         .cloned()
         .collect::<Vec<_>>();
 
@@ -128,8 +132,24 @@ pub(crate) async fn run(
         to_run.iter().map(|h| &h.id).collect::<Vec<_>>()
     );
     let reporter = HookInstallReporter::from(printer);
-    install_hooks(&to_run, &reporter).await?;
+    let mut resolve_hooks = install_hooks(&to_run, &store, &reporter).await?;
     drop(lock);
+
+    let hooks = hooks
+        .into_iter()
+        .map(|h| {
+            if skips.contains(&h.idx) {
+                HookToRun::Skipped(h)
+            } else {
+                // Find and remove the matching resolved hook
+                let resolved_idx = resolve_hooks
+                    .iter()
+                    .position(|r| r.idx == h.idx)
+                    .expect("Resolved hook must exist");
+                HookToRun::ToRun(resolve_hooks.swap_remove(resolved_idx))
+            }
+        })
+        .collect::<Vec<_>>();
 
     // Clear any unstaged changes from the git working directory.
     let mut _guard = None;
@@ -156,9 +176,9 @@ pub(crate) async fn run(
 
     run_hooks(
         &hooks,
-        &skips,
         &filter,
         env_vars,
+        &store,
         project.config().fail_fast.unwrap_or(false),
         show_diff_on_failure,
         verbose,
@@ -248,7 +268,12 @@ fn get_skips() -> Vec<String> {
     }
 }
 
-async fn install_hook(hook: &Hook, env_dir: &Path) -> Result<()> {
+async fn install_hook(hook: &ResolvedHook, store: &Store) -> Result<()> {
+    if hook.installed() {
+        return Ok(());
+    }
+
+    let env_dir = hook.env_path().expect("Hook must have env path");
     debug!(%hook, target = %env_dir.display(), "Install environment");
 
     if env_dir.try_exists()? {
@@ -259,36 +284,47 @@ async fn install_hook(hook: &Hook, env_dir: &Path) -> Result<()> {
         fs_err::tokio::remove_dir_all(env_dir).await?;
     }
 
-    hook.language.install(hook).await?;
-    hook.mark_as_installed().await?;
+    hook.language.install(hook, store).await?;
+    hook.mark_as_installed(store).await?;
 
     Ok(())
 }
 
-pub async fn install_hooks(hooks: &[Hook], reporter: &HookInstallReporter) -> Result<()> {
-    let to_install = hooks
-        .iter()
-        .filter(|hook| !hook.installed())
-        .filter_map(|hook| hook.env_path().map(|env_dir| (hook, env_dir)))
-        .unique_by(|(_, env_dir)| *env_dir);
+pub async fn install_hooks(
+    hooks: &[Hook],
+    store: &Store,
+    reporter: &HookInstallReporter,
+) -> Result<Vec<ResolvedHook>> {
+    let mut resolved_hooks = Vec::with_capacity(hooks.len());
+    let mut group_futures = FuturesUnordered::new();
 
-    let mut tasks = futures::stream::iter(to_install)
-        .map(|(hook, env_dir)| async move {
-            let progress = reporter.on_install_start(hook);
-            let result = install_hook(hook, env_dir).await;
-            reporter.on_install_complete(progress);
+    // Group hooks by language to enable parallel installation across different languages.
+    // Within each language group, hooks are installed sequentially, allowing later hooks
+    // to leverage the environment or tools installed by previous ones.
+    for (_, hooks) in &hooks.iter().chunk_by(|h| &h.language) {
+        let hooks: Vec<_> = hooks.collect();
+        group_futures.push(async move {
+            let mut resolved = Vec::with_capacity(hooks.len());
+            // Process hooks sequentially within each language group
+            for hook in hooks {
+                let resolved_hook = hook.language.resolve(hook, store).await?;
+                let progress = reporter.on_install_start(hook);
 
-            result
-        })
-        .buffer_unordered(5);
+                install_hook(&resolved_hook, store).await?;
+                resolved.push(resolved_hook);
 
-    while let Some(result) = tasks.next().await {
-        result?;
+                reporter.on_install_complete(progress);
+            }
+            anyhow::Ok(resolved)
+        });
     }
 
+    while let Some(result) = group_futures.next().await {
+        resolved_hooks.extend(result?);
+    }
     reporter.on_complete();
 
-    Ok(())
+    Ok(resolved_hooks)
 }
 
 const SKIPPED: &str = "Skipped";
@@ -305,21 +341,27 @@ fn status_line(start: &str, cols: usize, end_msg: &str, end_color: Style, postfi
     )
 }
 
-fn calculate_columns(hooks: &[Hook]) -> usize {
+fn calculate_columns(hooks: &[HookToRun]) -> usize {
     let name_len = hooks
         .iter()
-        .map(|hook| hook.name.width_cjk())
+        .filter_map(|hook| {
+            if let HookToRun::ToRun(hook) = hook {
+                Some(hook.name.width_cjk())
+            } else {
+                None
+            }
+        })
         .max()
         .unwrap_or(0);
     max(80, name_len + 3 + NO_FILES.len() + 1 + SKIPPED.len())
 }
 
 /// Run all hooks.
-pub async fn run_hooks(
-    hooks: &[Hook],
-    skips: &[String],
+async fn run_hooks(
+    hooks: &[HookToRun],
     filter: &FileFilter<'_>,
     env_vars: HashMap<&'static str, String>,
+    store: &Store,
     fail_fast: bool,
     show_diff_on_failure: bool,
     verbose: bool,
@@ -329,16 +371,21 @@ pub async fn run_hooks(
     let mut success = true;
 
     let mut diff = git::get_diff().await?;
-    // hooks must run in serial
+    // Hooks might modify the files, so they must be run sequentially.
     for hook in hooks {
         let (hook_success, new_diff) = run_hook(
-            hook, filter, &env_vars, skips, diff, columns, verbose, printer,
+            hook, filter, &env_vars, store, diff, columns, verbose, printer,
         )
         .await?;
 
         success &= hook_success;
         diff = new_diff;
-        if !success && (fail_fast || hook.fail_fast) {
+        let fail_fast = fail_fast
+            || match hook {
+                HookToRun::Skipped(_) => false,
+                HookToRun::ToRun(hook) => hook.fail_fast,
+            };
+        if !success && fail_fast {
             break;
         }
     }
@@ -377,29 +424,32 @@ fn shuffle<T>(filenames: &mut [T]) {
 }
 
 async fn run_hook(
-    hook: &Hook,
+    hook: &HookToRun,
     filter: &FileFilter<'_>,
     env_vars: &HashMap<&'static str, String>,
-    skips: &[String],
+    store: &Store,
     diff: Vec<u8>,
     columns: usize,
     verbose: bool,
     printer: Printer,
 ) -> Result<(bool, Vec<u8>)> {
-    if skips.contains(&hook.id) || skips.contains(&hook.alias) {
-        writeln!(
-            printer.stdout(),
-            "{}",
-            status_line(
-                &hook.name,
-                columns,
-                SKIPPED,
-                Style::new().black().on_yellow(),
-                "",
-            )
-        )?;
-        return Ok((true, diff));
-    }
+    let hook = match hook {
+        HookToRun::Skipped(hook) => {
+            writeln!(
+                printer.stdout(),
+                "{}",
+                status_line(
+                    &hook.name,
+                    columns,
+                    SKIPPED,
+                    Style::new().black().on_yellow(),
+                    "",
+                )
+            )?;
+            return Ok((true, diff));
+        }
+        HookToRun::ToRun(hook) => hook,
+    };
 
     let mut filenames = filter.for_hook(hook)?;
 
@@ -430,9 +480,9 @@ async fn run_hook(
 
     let (status, output) = if hook.pass_filenames {
         shuffle(&mut filenames);
-        hook.language.run(hook, &filenames, env_vars).await?
+        hook.language.run(hook, &filenames, env_vars, store).await?
     } else {
-        hook.language.run(hook, &[], env_vars).await?
+        hook.language.run(hook, &[], env_vars, store).await?
     };
 
     let duration = start.elapsed();
@@ -479,14 +529,13 @@ async fn run_hook(
         let stdout = output.trim_ascii();
         if !stdout.is_empty() {
             if let Some(file) = hook.log_file.as_deref() {
-                fs_err::OpenOptions::new()
+                fs_err::tokio::OpenOptions::new()
                     .create(true)
                     .append(true)
                     .open(file)
-                    .and_then(|mut f| {
-                        f.write_all(stdout)?;
-                        Ok(())
-                    })?;
+                    .await?
+                    .write_all(stdout)
+                    .await?;
             } else {
                 writeln!(
                     printer.stdout(),

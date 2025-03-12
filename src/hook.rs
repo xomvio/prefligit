@@ -1,6 +1,8 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
-use std::hash::Hash;
+use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -9,6 +11,8 @@ use anyhow::Result;
 use clap::ValueEnum;
 use futures::StreamExt;
 use itertools::zip_eq;
+use seahash::SeaHasher;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, error};
 use url::Url;
@@ -18,7 +22,7 @@ use crate::config::{
     MANIFEST_FILE, ManifestHook, MetaHook, RemoteHook, Stage, read_config, read_manifest,
 };
 use crate::fs::{CWD, Simplified};
-use crate::store::Store;
+use crate::store::{Store, to_hex};
 use crate::warn_user;
 
 #[derive(Debug, Error)]
@@ -33,6 +37,8 @@ pub enum Error {
     Store(#[from] Box<crate::store::Error>),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -188,31 +194,29 @@ impl Project {
             _ => None,
         });
         let mut tasks = futures::stream::iter(remotes_iter)
-            .map(|repo_config| {
+            .map(async |repo_config| {
                 let remote_repos = remote_repos.clone();
-                async move {
-                    let progress = reporter.map(|reporter| {
-                        (reporter, reporter.on_clone_start(&format!("{repo_config}")))
-                    });
 
-                    let path = store.clone_repo(repo_config).await.map_err(Box::new)?;
+                let progress = reporter
+                    .map(|reporter| (reporter, reporter.on_clone_start(&format!("{repo_config}"))));
 
-                    if let Some((reporter, progress)) = progress {
-                        reporter.on_clone_complete(progress);
-                    }
+                let path = store.clone_repo(repo_config).await.map_err(Box::new)?;
 
-                    let repo = Rc::new(Repo::remote(
-                        repo_config.repo.clone(),
-                        repo_config.rev.clone(),
-                        path,
-                    )?);
-                    remote_repos
-                        .lock()
-                        .unwrap()
-                        .insert(repo_config, repo.clone());
-
-                    Ok::<(), Error>(())
+                if let Some((reporter, progress)) = progress {
+                    reporter.on_clone_complete(progress);
                 }
+
+                let repo = Rc::new(Repo::remote(
+                    repo_config.repo.clone(),
+                    repo_config.rev.clone(),
+                    path,
+                )?);
+                remote_repos
+                    .lock()
+                    .unwrap()
+                    .insert(repo_config, repo.clone());
+
+                Ok::<(), Error>(())
             })
             .buffer_unordered(5);
 
@@ -267,23 +271,21 @@ impl Project {
                         };
 
                         let repo = Rc::clone(repo);
-                        let mut builder = HookBuilder::new(repo, hook.clone());
+                        let mut builder = HookBuilder::new(repo, hook.clone(), hooks.len());
                         builder.update(hook_config);
                         builder.combine(&self.config);
 
-                        let mut hook = builder.build();
-                        hook.with_path(store.hook_path(&hook));
+                        let hook = builder.build();
                         hooks.push(hook);
                     }
                 }
                 config::Repo::Local(repo_config) => {
                     for hook_config in &repo_config.hooks {
                         let repo = Rc::clone(repo);
-                        let mut builder = HookBuilder::new(repo, hook_config.clone());
+                        let mut builder = HookBuilder::new(repo, hook_config.clone(), hooks.len());
                         builder.combine(&self.config);
 
-                        let mut hook = builder.build();
-                        hook.with_path(store.hook_path(&hook));
+                        let hook = builder.build();
                         hooks.push(hook);
                     }
                 }
@@ -291,11 +293,10 @@ impl Project {
                     for hook_config in &repo_config.hooks {
                         let repo = Rc::clone(repo);
                         let hook_config = ManifestHook::from(hook_config.clone());
-                        let mut builder = HookBuilder::new(repo, hook_config);
+                        let mut builder = HookBuilder::new(repo, hook_config, hooks.len());
                         builder.combine(&self.config);
 
-                        let mut hook = builder.build();
-                        hook.with_path(store.hook_path(&hook));
+                        let hook = builder.build();
                         hooks.push(hook);
                     }
                 }
@@ -317,11 +318,12 @@ pub trait HookInitReporter {
 struct HookBuilder {
     repo: Rc<Repo>,
     config: ManifestHook,
+    idx: usize,
 }
 
 impl HookBuilder {
-    fn new(repo: Rc<Repo>, config: ManifestHook) -> Self {
-        Self { repo, config }
+    fn new(repo: Rc<Repo>, config: ManifestHook, idx: usize) -> Self {
+        Self { repo, config, idx }
     }
 
     /// Update the hook from the project level hook configuration.
@@ -392,7 +394,8 @@ impl HookBuilder {
         if options
             .language_version
             .as_ref()
-            .is_some_and(|v| !v.is_default())
+            .and_then(|v| v.request.as_ref())
+            .is_some()
         {
             if !language.supports_dependency() {
                 warn_user!(
@@ -416,7 +419,7 @@ impl HookBuilder {
         let options = self.config.options;
         Hook {
             repo: self.repo,
-            path: None,
+            idx: self.idx,
             id: self.config.id,
             name: self.config.name,
             entry: self.config.entry,
@@ -449,8 +452,9 @@ impl HookBuilder {
 #[derive(Debug, Clone)]
 pub struct Hook {
     repo: Rc<Repo>,
-    path: Option<PathBuf>,
 
+    /// The index of the hook defined in the configuration file.
+    pub idx: usize,
     pub id: String,
     pub name: String,
     pub entry: String,
@@ -476,9 +480,9 @@ pub struct Hook {
 }
 
 impl Display for Hook {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
-            write!(f, "{} ({})", self.id, self.repo)
+            write!(f, "{}:{}", self.repo, self.id)
         } else {
             write!(f, "{}", self.id)
         }
@@ -486,10 +490,6 @@ impl Display for Hook {
 }
 
 impl Hook {
-    fn with_path(&mut self, path: Option<PathBuf>) {
-        self.path = path;
-    }
-
     pub fn repo(&self) -> &Repo {
         &self.repo
     }
@@ -497,11 +497,6 @@ impl Hook {
     /// Get the path to the repository that contains the hook.
     pub fn repo_path(&self) -> Option<&Path> {
         self.repo.path()
-    }
-
-    /// Get the path to the environment directory (where the hook is installed) if it exists.
-    pub fn env_path(&self) -> Option<&Path> {
-        self.path.as_deref()
     }
 
     pub fn is_local(&self) -> bool {
@@ -516,44 +511,137 @@ impl Hook {
         matches!(&*self.repo, Repo::Meta { .. })
     }
 
-    // TODO: health check
+    pub fn dependencies(&self) -> Cow<'_, Vec<String>> {
+        // For remote hooks, itself is a implicit dependency of the hook.
+        if self.is_remote() {
+            let mut deps = Vec::with_capacity(1 + self.additional_dependencies.len());
+            deps.push(self.repo.to_string());
+            deps.extend(self.additional_dependencies.iter().map(ToString::to_string));
+            Cow::Owned(deps)
+        } else {
+            Cow::Borrowed(&self.additional_dependencies)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ResolvedHook {
+    Installed {
+        hook: Hook,
+        info: InstallInfo,
+    },
+    NotInstalled {
+        hook: Hook,
+        info: InstallInfo,
+        /// Additional resolved toolchain information, like the path to Python executable.
+        toolchain: PathBuf,
+    },
+    NoNeedInstall(Hook),
+}
+
+impl Deref for ResolvedHook {
+    type Target = Hook;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ResolvedHook::Installed { hook, .. } => hook,
+            ResolvedHook::NotInstalled { hook, .. } => hook,
+            ResolvedHook::NoNeedInstall(hook) => hook,
+        }
+    }
+}
+
+impl Display for ResolvedHook {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // TODO: add more information
+        self.deref().fmt(f)
+    }
+}
+
+impl Hash for ResolvedHook {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            ResolvedHook::Installed { info, .. } => {
+                info.hash(state);
+            }
+            ResolvedHook::NotInstalled { info, .. } => {
+                info.hash(state);
+            }
+            ResolvedHook::NoNeedInstall(hook) => {
+                hook.to_string().hash(state);
+            }
+        }
+    }
+}
+
+impl ResolvedHook {
+    pub fn env_path(&self) -> Option<&Path> {
+        match self {
+            ResolvedHook::Installed { info, .. } => Some(&info.env_path),
+            ResolvedHook::NotInstalled { info, .. } => Some(&info.env_path),
+            ResolvedHook::NoNeedInstall(_) => None,
+        }
+    }
 
     /// Check if the hook is installed in the environment.
     pub fn installed(&self) -> bool {
-        // Hooks that no need to install considered as installed.
-        let Some(env) = self.env_path() else {
-            return true;
-        };
-        env.join(".installed_ok").exists()
+        !matches!(self, ResolvedHook::NotInstalled { .. })
     }
 
-    /// Write a state file to mark the hook as installed.
-    pub async fn mark_as_installed(&self) -> Result<(), Error> {
-        let Some(env) = self.env_path() else {
+    /// Mark the hook as installed in the environment.
+    pub async fn mark_as_installed(&self, _store: &Store) -> Result<(), Error> {
+        let Self::NotInstalled { info, .. } = self else {
             return Ok(());
         };
-        fs_err::tokio::write(env.join(".installed_ok"), "").await?;
-        fs_err::tokio::write(env.join(".repo_source"), self.repo.to_string()).await?;
+
+        let content = serde_json::to_string_pretty(info)?;
+        fs_err::tokio::write(info.env_path.join(".prefligit-hook.json"), content).await?;
         Ok(())
     }
 }
 
-impl Hash for Hook {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match &*self.repo {
-            Repo::Remote { url, rev, .. } => {
-                url.hash(state);
-                rev.hash(state);
-            }
-            Repo::Local { .. } => {
-                "local".hash(state);
-            }
-            Repo::Meta { .. } => unreachable!(),
-        }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct InstallInfo {
+    pub language: Language,
+    pub language_version: semver::Version,
+    pub dependencies: Vec<String>,
+    pub env_path: PathBuf,
+}
 
-        self.language.as_str().hash(state);
-        // TODO: should we resolve the language version first?
-        self.language_version.as_str().hash(state);
-        self.additional_dependencies.hash(state);
+impl Hash for InstallInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.language.hash(state);
+        self.language_version.hash(state);
+        self.dependencies.hash(state);
+    }
+}
+
+impl InstallInfo {
+    pub fn new(
+        language: Language,
+        language_version: semver::Version,
+        dependencies: Vec<String>,
+        store: &Store,
+    ) -> Self {
+        // Calculate the hook directory.
+        let mut hasher = SeaHasher::new();
+        language.hash(&mut hasher);
+        language_version.hash(&mut hasher);
+        dependencies.hash(&mut hasher);
+        let hash = to_hex(hasher.finish());
+
+        Self {
+            language,
+            language_version,
+            dependencies,
+            env_path: store.hooks_dir().join(hash),
+        }
+    }
+
+    pub fn matches(&self, hook: &Hook) -> bool {
+        self.language == hook.language
+            && hook.language_version.matches(&self.language_version)
+            // TODO: should we compare ignore order?
+            && self.dependencies == hook.dependencies().as_slice()
     }
 }

@@ -14,7 +14,7 @@ use constants::env_vars::EnvVars;
 use crate::config::RemoteRepo;
 use crate::fs::LockedFile;
 use crate::git::clone_repo;
-use crate::hook::Hook;
+use crate::hook::InstallInfo;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -102,10 +102,24 @@ impl Store {
         // TODO: add windows retry
         fs_err::tokio::remove_dir_all(&target).await.ok();
         fs_err::tokio::rename(temp, &target).await?;
+
         fs_err::tokio::write(target.join(".repo_source"), repo.to_string()).await?;
         fs_err::tokio::write(target.join(".cloned_ok"), "").await?;
 
         Ok(target)
+    }
+
+    pub fn installed_hooks(&self) -> impl Iterator<Item = InstallInfo> {
+        fs_err::read_dir(self.hooks_dir())
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let mut file = fs_err::File::open(path.join(".prefligit-hook.json")).ok()?;
+                serde_json::from_reader(&mut file).ok()
+            })
     }
 
     /// Lock the store.
@@ -123,23 +137,6 @@ impl Store {
         repo.hash(&mut hasher);
         let digest = to_hex(hasher.finish());
         self.repos_dir().join(digest)
-    }
-
-    /// Returns the path to the installed hook environment.
-    pub fn hook_path(&self, hook: &Hook) -> Option<PathBuf> {
-        // Languages that can't install dependencies, no matter it's local or remote.
-        if !hook.language.supports_dependency() {
-            return None;
-        }
-        // Meta hooks never get installed.
-        if hook.is_meta() {
-            return None;
-        }
-
-        let mut hasher = SeaHasher::new();
-        hook.hash(&mut hasher);
-        let digest = to_hex(hasher.finish());
-        Some(self.hooks_dir().join(digest))
     }
 
     pub fn repos_dir(&self) -> PathBuf {

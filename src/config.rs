@@ -15,7 +15,7 @@ pub const CONFIG_FILE: &str = ".pre-commit-config.yaml";
 pub const ALTER_CONFIG_FILE: &str = ".pre-commit-config.yml";
 pub const MANIFEST_FILE: &str = ".pre-commit-hooks.yaml";
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Language {
     Conda,
@@ -64,15 +64,6 @@ impl Language {
             Self::Script => "script",
             Self::System => "system",
         }
-    }
-
-    /// Return whether the language allows specifying the version.
-    /// See <https://pre-commit.com/#overriding-language-version>
-    pub fn supports_language_version(self) -> bool {
-        matches!(
-            self,
-            Self::Python | Self::Node | Self::Ruby | Self::Rust | Self::Golang
-        )
     }
 }
 
@@ -285,57 +276,141 @@ impl Display for RepoLocation {
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub enum LanguageVersion {
-    /// By default, pre-commit will use the system installed version,
-    /// if not found, it will try to download and install a version.
+#[derive(Default, Debug, Copy, Clone)]
+pub enum LanguagePreference {
     #[default]
-    Default,
-    /// Use the system installed version.
-    System,
-    /// Download and install a specific version.
-    Specific(String),
+    Managed,
+    OnlySystem,
+    OnlyManaged,
 }
 
-impl<'de> Deserialize<'de> for LanguageVersion {
-    fn deserialize<D>(deserializer: D) -> Result<LanguageVersion, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match &*s {
-            "default" => Ok(LanguageVersion::Default),
-            "system" => Ok(LanguageVersion::System),
-            _ => Ok(LanguageVersion::Specific(s)),
+#[derive(Debug, Clone, Default)]
+pub struct LanguageVersion {
+    pub preference: LanguagePreference,
+    pub request: Option<semver::VersionReq>,
+}
+
+impl FromStr for LanguagePreference {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim() {
+            "managed" => Ok(Self::Managed),
+            "only-system" => Ok(Self::OnlySystem),
+            "only-managed" => Ok(Self::OnlyManaged),
+            _ => Err("invalid language preference"),
         }
     }
 }
 
-impl LanguageVersion {
-    pub fn is_default(&self) -> bool {
-        matches!(self, Self::Default)
+impl Display for LanguagePreference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Managed => "managed",
+            Self::OnlySystem => "only-system",
+            Self::OnlyManaged => "only-managed",
+        })
     }
+}
 
-    pub fn allows_system(&self) -> bool {
-        !matches!(self, Self::Specific(_))
-    }
+impl FromStr for LanguageVersion {
+    type Err = String;
 
-    pub fn allows_download(&self) -> bool {
-        !matches!(self, Self::System)
-    }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        if s.is_empty() {
+            return Ok(Self {
+                preference: LanguagePreference::default(),
+                request: None,
+            });
+        }
 
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Default => "default",
-            Self::System => "system",
-            Self::Specific(s) => s,
+        // For compatibility with pre-commit, allow `default` and `system` as language version.
+        match s {
+            "default" => {
+                return Ok(Self {
+                    preference: LanguagePreference::Managed,
+                    request: None,
+                });
+            }
+            "system" => {
+                return Ok(Self {
+                    preference: LanguagePreference::OnlySystem,
+                    request: None,
+                });
+            }
+            _ => {}
+        };
+
+        match s.split_once(';') {
+            None => {
+                // First try to parse as a language preference
+                match LanguagePreference::from_str(s) {
+                    Ok(pref) => Ok(Self {
+                        preference: pref,
+                        request: None,
+                    }),
+                    // If failed, treat it as a version request
+                    Err(_) => {
+                        let request = semver::VersionReq::parse(s)
+                            .map_err(|e| format!("invalid version requirement: {e}"))?;
+                        Ok(Self {
+                            preference: LanguagePreference::default(),
+                            request: Some(request),
+                        })
+                    }
+                }
+            }
+            Some((pref, request)) => {
+                let preference = LanguagePreference::from_str(pref.trim())
+                    .map_err(|_| "invalid language preference")?;
+                let request = semver::VersionReq::parse(request.trim())
+                    .map_err(|e| format!("invalid version requirement: {e}"))?;
+                Ok(Self {
+                    preference,
+                    request: Some(request),
+                })
+            }
         }
     }
 }
 
 impl Display for LanguageVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        match &self.request {
+            Some(req) => write!(f, "{}; {}", self.preference, req),
+            None => Display::fmt(&self.preference, f),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LanguageVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl LanguageVersion {
+    pub fn allow_system(&self) -> bool {
+        matches!(
+            self.preference,
+            LanguagePreference::Managed | LanguagePreference::OnlySystem
+        )
+    }
+
+    pub fn allow_managed(&self) -> bool {
+        matches!(
+            self.preference,
+            LanguagePreference::Managed | LanguagePreference::OnlyManaged
+        )
+    }
+
+    pub fn matches(&self, version: &semver::Version) -> bool {
+        self.request.as_ref().is_none_or(|req| req.matches(version))
     }
 }
 
@@ -1234,7 +1309,10 @@ mod tests {
                                         pass_filenames: None,
                                         description: None,
                                         language_version: Some(
-                                            Default,
+                                            LanguageVersion {
+                                                preference: Managed,
+                                                request: None,
+                                            },
                                         ),
                                         log_file: None,
                                         require_serial: None,
@@ -1262,7 +1340,10 @@ mod tests {
                                         pass_filenames: None,
                                         description: None,
                                         language_version: Some(
-                                            System,
+                                            LanguageVersion {
+                                                preference: OnlySystem,
+                                                request: None,
+                                            },
                                         ),
                                         log_file: None,
                                         require_serial: None,
@@ -1290,9 +1371,24 @@ mod tests {
                                         pass_filenames: None,
                                         description: None,
                                         language_version: Some(
-                                            Specific(
-                                                "3.8",
-                                            ),
+                                            LanguageVersion {
+                                                preference: Managed,
+                                                request: Some(
+                                                    VersionReq {
+                                                        comparators: [
+                                                            Comparator {
+                                                                op: Caret,
+                                                                major: 3,
+                                                                minor: Some(
+                                                                    8,
+                                                                ),
+                                                                patch: None,
+                                                                pre: Prerelease(""),
+                                                            },
+                                                        ],
+                                                    },
+                                                ),
+                                            },
                                         ),
                                         log_file: None,
                                         require_serial: None,
@@ -1330,5 +1426,36 @@ mod tests {
         let manifest = read_manifest(Path::new("tests/files/uv-pre-commit-hooks.yaml"))?;
         insta::assert_debug_snapshot!(manifest);
         Ok(())
+    }
+
+    #[test]
+    fn test_language_version_from_str() {
+        // Empty string
+        let version = LanguageVersion::from_str("").unwrap();
+        assert!(matches!(version.preference, LanguagePreference::Managed));
+        assert!(version.request.is_none());
+
+        // Preference only
+        let version = LanguageVersion::from_str("managed").unwrap();
+        assert!(matches!(version.preference, LanguagePreference::Managed));
+        assert!(version.request.is_none());
+
+        // Version only
+        let version = LanguageVersion::from_str(">=1.0.0").unwrap();
+        assert!(matches!(version.preference, LanguagePreference::Managed));
+        assert_eq!(version.request.unwrap().to_string(), ">=1.0.0");
+
+        // Both preference and version
+        let version = LanguageVersion::from_str("only-system; >=1.0.0").unwrap();
+        assert!(matches!(version.preference, LanguagePreference::OnlySystem));
+        assert_eq!(version.request.unwrap().to_string(), ">=1.0.0");
+
+        // Invalid version
+        assert!(LanguageVersion::from_str("managed;invalid").is_err());
+
+        // Invalid preference but valid version
+        let version = LanguageVersion::from_str(">=2.0.0").unwrap();
+        assert!(matches!(version.preference, LanguagePreference::Managed));
+        assert_eq!(version.request.unwrap().to_string(), ">=2.0.0");
     }
 }
