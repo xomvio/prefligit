@@ -3,10 +3,11 @@
 ![Development Status](https://img.shields.io/badge/Development-Early_Stage-yellowgreen)
 [![CI](https://github.com/j178/prefligit/actions/workflows/ci.yml/badge.svg)](https://github.com/j178/prefligit/actions/workflows/ci.yml)
 
-<img width="665" alt="prefligit" src="https://github.com/user-attachments/assets/dd2d48d0-d825-407e-9248-e74660b445de">
+<img width="250" alt="prefligit" src="https://github.com/user-attachments/assets/49080cb0-f528-4aa5-acb7-5a88eb9eff4a">
 
 A reimplementation of the [pre-commit](https://pre-commit.com/) tool in Rust, designed to be a faster, dependency-free and drop-in alternative,
-while also providing some additional opinionated features.
+while also providing s
+ome additional opinionated features.
 
 > [!WARNING]
 > This project is still in very early development, only a few of the original pre-commit features are implemented.
