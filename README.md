@@ -19,12 +19,12 @@ while also providing some additional opinionated features.
 ## Features
 
 - A single binary with no dependencies, does not require Python or any other runtime.
-- Improved performance in hook preparation and execution.
 - Fully compatible with the original pre-commit configurations and hooks.
-- Integration with [`uv`](https://github.com/astral-sh/uv) for managing Python environments and installations.
+- Improved performance in hook preparation and execution.
+- Integration with [`uv`](https://github.com/astral-sh/uv) for managing Python virtual environments and dependencies.
 - Improved toolchain installations for Python, Node.js, Go, Rust and Ruby, shared between hooks.
+- Built-in implementation of some common hooks.
 - (TODO) Built-in support for monorepos.
-- (TODO) Built-in implementation of some common hooks.
 
 ## Installation
 
