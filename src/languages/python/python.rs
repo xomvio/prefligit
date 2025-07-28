@@ -26,7 +26,7 @@ impl LanguageImpl for Python {
         // Select from installed hooks
         if let Some(info) = store.installed_hooks().find(|info| info.matches(hook)) {
             debug!(
-                "Found installed hook for {}: {}",
+                "Found installed environment for {}: {}",
                 hook,
                 info.env_path.display()
             );
@@ -35,7 +35,7 @@ impl LanguageImpl for Python {
                 info,
             });
         }
-        debug!("No matching installed hook found for {}", hook);
+        debug!("No matching installed environment found for {}", hook);
 
         // Select toolchain from system or managed
         let uv = Uv::install(store).await?;
