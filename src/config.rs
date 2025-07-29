@@ -287,7 +287,7 @@ pub enum LanguagePreference {
 #[derive(Debug, Clone, Default)]
 pub struct LanguageVersion {
     pub preference: LanguagePreference,
-    pub request: Option<semver::VersionReq>,
+    pub request: Option<String>,
 }
 
 impl FromStr for LanguagePreference {
@@ -351,23 +351,18 @@ impl FromStr for LanguageVersion {
                         request: None,
                     })
                 } else {
-                    // If failed, treat it as a version request
-                    let request = semver::VersionReq::parse(s)
-                        .map_err(|e| format!("invalid version requirement: {e}"))?;
                     Ok(Self {
                         preference: LanguagePreference::default(),
-                        request: Some(request),
+                        request: Some(s.to_string()),
                     })
                 }
             }
             Some((pref, request)) => {
                 let preference = LanguagePreference::from_str(pref.trim())
                     .map_err(|_| "invalid language preference")?;
-                let request = semver::VersionReq::parse(request.trim())
-                    .map_err(|e| format!("invalid version requirement: {e}"))?;
                 Ok(Self {
                     preference,
-                    request: Some(request),
+                    request: Some(request.trim().to_string()),
                 })
             }
         }
@@ -390,26 +385,6 @@ impl<'de> Deserialize<'de> for LanguageVersion {
     {
         let s = String::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
-    }
-}
-
-impl LanguageVersion {
-    pub fn allow_system(&self) -> bool {
-        matches!(
-            self.preference,
-            LanguagePreference::Managed | LanguagePreference::OnlySystem
-        )
-    }
-
-    pub fn allow_managed(&self) -> bool {
-        matches!(
-            self.preference,
-            LanguagePreference::Managed | LanguagePreference::OnlyManaged
-        )
-    }
-
-    pub fn matches(&self, version: &semver::Version) -> bool {
-        self.request.as_ref().is_none_or(|req| req.matches(version))
     }
 }
 
@@ -773,6 +748,9 @@ pub struct Manifest {
 pub enum Error {
     #[error("Config file not found: {0}")]
     NotFound(String),
+
+    #[error("Invalid config file: {0}")]
+    InvalidConfig(String),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -1374,19 +1352,7 @@ mod tests {
                                             LanguageVersion {
                                                 preference: Managed,
                                                 request: Some(
-                                                    VersionReq {
-                                                        comparators: [
-                                                            Comparator {
-                                                                op: Caret,
-                                                                major: 3,
-                                                                minor: Some(
-                                                                    8,
-                                                                ),
-                                                                patch: None,
-                                                                pre: Prerelease(""),
-                                                            },
-                                                        ],
-                                                    },
+                                                    "3.8",
                                                 ),
                                             },
                                         ),
@@ -1449,13 +1415,5 @@ mod tests {
         let version = LanguageVersion::from_str("only-system; >=1.0.0").unwrap();
         assert!(matches!(version.preference, LanguagePreference::OnlySystem));
         assert_eq!(version.request.unwrap().to_string(), ">=1.0.0");
-
-        // Invalid version
-        assert!(LanguageVersion::from_str("managed;invalid").is_err());
-
-        // Invalid preference but valid version
-        let version = LanguageVersion::from_str(">=2.0.0").unwrap();
-        assert!(matches!(version.preference, LanguagePreference::Managed));
-        assert_eq!(version.request.unwrap().to_string(), ">=2.0.0");
     }
 }
