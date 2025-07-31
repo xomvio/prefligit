@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 use anstream::ColorChoice;
 use anyhow::Result;
@@ -10,7 +11,7 @@ use seahash::SeaHasher;
 use tracing::trace;
 
 use crate::fs::CWD;
-use crate::hook::{Hook, ResolvedHook};
+use crate::hook::{Hook, InstallInfo, InstalledHook};
 use crate::languages::LanguageImpl;
 use crate::process::Cmd;
 use crate::run::run_by_batch;
@@ -22,14 +23,14 @@ const PRE_COMMIT_LABEL: &str = "PRE_COMMIT";
 pub struct Docker;
 
 impl Docker {
-    fn docker_tag(hook: &ResolvedHook) -> String {
+    fn docker_tag(hook: &InstalledHook) -> String {
         let mut hasher = SeaHasher::new();
         hook.hash(&mut hasher);
         let digest = crate::store::to_hex(hasher.finish());
         format!("prefligit-{digest}")
     }
 
-    async fn build_docker_image(hook: &ResolvedHook, pull: bool) -> Result<()> {
+    async fn build_docker_image(hook: &InstalledHook, pull: bool) -> Result<()> {
         let Some(src) = hook.repo_path() else {
             anyhow::bail!("Language `docker` cannot work with `local` repository");
         };
@@ -167,21 +168,27 @@ impl Docker {
 }
 
 impl LanguageImpl for Docker {
-    async fn resolve(&self, hook: &Hook, _store: &Store) -> Result<ResolvedHook> {
-        Ok(ResolvedHook::NoNeedInstall(hook.clone()))
-    }
+    async fn install(&self, hook: &Hook, store: &Store) -> Result<InstalledHook> {
+        let info = InstallInfo::new(
+            hook.language,
+            semver::Version::new(0, 0, 0), // Docker does not have a version
+            hook.dependencies().to_vec(),
+            PathBuf::new(),
+            store,
+        );
+        let installed_hook = InstalledHook::Installed {
+            hook: hook.clone(),
+            info,
+        };
 
-    async fn install(&self, hook: &ResolvedHook, _store: &Store) -> Result<()> {
-        let env = hook.env_path().expect("Docker must have env path");
+        Docker::build_docker_image(&installed_hook, true).await?;
+        let env = installed_hook
+            .env_path()
+            .expect("Docker must have env path");
 
-        // TODO: check unsupported language version
-        if !hook.additional_dependencies.is_empty() {
-            anyhow::bail!("Docker does not support additional dependencies");
-        }
-
-        Docker::build_docker_image(hook, true).await?;
         fs_err::tokio::create_dir_all(env).await?;
-        Ok(())
+
+        Ok(installed_hook)
     }
 
     async fn check_health(&self) -> Result<()> {
@@ -190,7 +197,7 @@ impl LanguageImpl for Docker {
 
     async fn run(
         &self,
-        hook: &ResolvedHook,
+        hook: &InstalledHook,
         filenames: &[&String],
         env_vars: &HashMap<&'static str, String>,
         _store: &Store,
