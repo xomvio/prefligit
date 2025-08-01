@@ -16,6 +16,7 @@ use crate::store::{Store, ToolBucket};
 use crate::languages::python::PythonRequest;
 use crate::languages::version::LanguageRequest;
 
+use crate::process;
 use constants::env_vars::EnvVars;
 
 #[derive(Debug, Copy, Clone)]
@@ -51,23 +52,9 @@ impl LanguageImpl for Python {
         };
 
         // Create venv (auto download Python if needed)
-        let mut cmd = uv.cmd("create venv");
-        cmd.arg("venv")
-            .arg(&info.env_path)
-            .arg("--python-preference")
-            .arg("managed")
-            .arg("--no-project")
-            .arg("--no-config")
-            .env(EnvVars::UV_PYTHON_DOWNLOADS, "true")
-            .env(
-                EnvVars::UV_PYTHON_INSTALL_DIR,
-                store.tools_path(ToolBucket::Python),
-            );
-        if let Some(python) = python_request {
-            cmd.arg("--python").arg(python);
-        }
-
-        cmd.check(true).output().await?;
+        Self::create_venv_with_retry(&uv, store, &info, python_request.as_ref())
+            .await
+            .context("Failed to create Python virtual environment")?;
 
         // Install dependencies
         if let Some(repo_path) = hook.repo_path() {
@@ -186,6 +173,96 @@ impl LanguageImpl for Python {
         }
 
         Ok((combined_status, combined_output))
+    }
+}
+
+impl Python {
+    async fn create_venv_with_retry(
+        uv: &Uv,
+        store: &Store,
+        info: &InstallInfo,
+        python_request: Option<&String>,
+    ) -> Result<(), Error> {
+        // Try creating venv without downloads first
+        match Self::create_venv_command(uv, store, info, python_request, false, false)
+            .check(true)
+            .output()
+            .await
+        {
+            Ok(_) => {
+                debug!("Venv created successfully with no downloads");
+                Ok(())
+            }
+            Err(e @ process::Error::Status { .. }) => {
+                // Check if we can retry with downloads
+                if Self::can_retry_with_downloads(&e) {
+                    debug!("Retrying venv creation with managed Python downloads");
+                    Self::create_venv_command(uv, store, info, python_request, true, true)
+                        .check(true)
+                        .output()
+                        .await?;
+                    return Ok(());
+                }
+                // If we can't retry, return the original error
+                Err(e.into())
+            }
+            Err(e) => {
+                debug!("Failed to create venv: {}", e);
+                Err(e.into())
+            }
+        }
+    }
+
+    fn create_venv_command(
+        uv: &Uv,
+        store: &Store,
+        info: &InstallInfo,
+        python_request: Option<&String>,
+        set_install_dir: bool,
+        allow_downloads: bool,
+    ) -> Cmd {
+        let mut cmd = uv.cmd("create venv");
+        cmd.arg("venv")
+            .arg(&info.env_path)
+            .arg("--python-preference")
+            .arg("managed")
+            .arg("--no-project")
+            .arg("--no-config");
+
+        if set_install_dir {
+            cmd.env(
+                EnvVars::UV_PYTHON_INSTALL_DIR,
+                store.tools_path(ToolBucket::Python),
+            );
+        }
+        if allow_downloads {
+            cmd.arg("--allow-python-downloads");
+        } else {
+            cmd.arg("--no-python-downloads");
+        }
+
+        if let Some(python) = python_request {
+            cmd.arg("--python").arg(python);
+        }
+
+        cmd
+    }
+
+    fn can_retry_with_downloads(error: &process::Error) -> bool {
+        let process::Error::Status {
+            error:
+                process::StatusError {
+                    output: Some(output),
+                    ..
+                },
+            ..
+        } = error
+        else {
+            return false;
+        };
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        stderr.contains("A managed Python download is available")
     }
 }
 
