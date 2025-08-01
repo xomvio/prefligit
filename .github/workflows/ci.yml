@@ -95,6 +95,11 @@ jobs:
       - name: "Install Python"
         run: uv python install --no-bin
 
+      - name: "Install Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '19.9.0'
+
       - name: "Cargo test"
         run: |
           cargo nextest show-config test-groups
@@ -126,6 +131,11 @@ jobs:
 
       - name: "Install Python"
         run: uv python install --no-bin
+
+      - name: "Install Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '19.9.0'
 
       - name: "Cargo test"
         run: |
@@ -161,6 +171,17 @@ jobs:
 
       - name: "Install Python"
         run: uv python install --no-bin
+
+      - name: "Install Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '19.9.0'
+
+      - name: "Find node and npm versions"
+        run: |
+          Get-Command node -All
+          Get-Command npm -All
+        shell: pwsh
 
       - name: "Cargo test"
         run: |

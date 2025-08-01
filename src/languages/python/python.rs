@@ -10,7 +10,7 @@ use crate::hook::{Hook, InstallInfo};
 use crate::languages::python::uv::Uv;
 use crate::languages::{Error, LanguageImpl};
 use crate::process::Cmd;
-use crate::run::run_by_batch;
+use crate::run::{prepend_path, run_by_batch};
 use crate::store::{Store, ToolBucket};
 
 use crate::languages::python::PythonRequest;
@@ -20,13 +20,29 @@ use crate::process;
 use constants::env_vars::EnvVars;
 
 #[derive(Debug, Copy, Clone)]
-pub struct Python;
+pub(crate) struct Python;
 
 static QUERY_PYTHON_INFO: &str = indoc::indoc! {r#"\
     import sys
     print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
     print(sys.base_exec_prefix)
 "#};
+
+fn to_uv_python_request(request: &LanguageRequest) -> Option<String> {
+    match request {
+        LanguageRequest::Any => None,
+        LanguageRequest::Python(request) => match request {
+            PythonRequest::Major(major) => Some(format!("{major}")),
+            PythonRequest::MajorMinor(major, minor) => Some(format!("{major}.{minor}")),
+            PythonRequest::MajorMinorPatch(major, minor, patch) => {
+                Some(format!("{major}.{minor}.{patch}"))
+            }
+            PythonRequest::Range(_, raw) => Some(raw.clone()),
+            PythonRequest::Path(path) => Some(path.to_string_lossy().to_string()),
+        },
+        _ => unreachable!(),
+    }
+}
 
 impl LanguageImpl for Python {
     async fn install(&self, hook: &Hook, store: &Store) -> Result<InstalledHook, Error> {
@@ -37,19 +53,7 @@ impl LanguageImpl for Python {
 
         debug!(%hook, target = %info.env_path.display(), "Installing environment");
 
-        let python_request = match &hook.language_request {
-            LanguageRequest::Any => None,
-            LanguageRequest::Python(request) => match request {
-                PythonRequest::Major(major) => Some(format!("{major}")),
-                PythonRequest::MajorMinor(major, minor) => Some(format!("{major}.{minor}")),
-                PythonRequest::MajorMinorPatch(major, minor, patch) => {
-                    Some(format!("{major}.{minor}.{patch}"))
-                }
-                PythonRequest::Range(_, raw) => Some(raw.clone()),
-                PythonRequest::Path(path) => Some(path.to_string_lossy().to_string()),
-            },
-            _ => unreachable!(),
-        };
+        let python_request = to_uv_python_request(&hook.language_request);
 
         // Create venv (auto download Python if needed)
         Self::create_venv_with_retry(&uv, store, &info, python_request.as_ref())
@@ -58,7 +62,7 @@ impl LanguageImpl for Python {
 
         // Install dependencies
         if let Some(repo_path) = hook.repo_path() {
-            uv.cmd("install dependencies")
+            uv.cmd("uv pip install")
                 .arg("pip")
                 .arg("install")
                 .arg(".")
@@ -69,7 +73,7 @@ impl LanguageImpl for Python {
                 .output()
                 .await?;
         } else if !hook.additional_dependencies.is_empty() {
-            uv.cmd("install dependencies")
+            uv.cmd("uv pip install")
                 .arg("pip")
                 .arg("install")
                 .args(&hook.additional_dependencies)
@@ -125,22 +129,12 @@ impl LanguageImpl for Python {
         env_vars: &HashMap<&'static str, String>,
         _store: &Store,
     ) -> Result<(i32, Vec<u8>), Error> {
-        // Get environment directory and parse command
         let env_dir = hook.env_path().expect("Python must have env path");
-
         let cmds = shlex::split(&hook.entry)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse entry command"))?;
 
         // Construct PATH with venv bin directory first
-        let new_path = std::env::join_paths(
-            std::iter::once(bin_dir(env_dir)).chain(
-                EnvVars::var_os(EnvVars::PATH)
-                    .as_ref()
-                    .iter()
-                    .flat_map(std::env::split_paths),
-            ),
-        )
-        .context("Failed to join PATH")?;
+        let new_path = prepend_path(&bin_dir(env_dir)).context("Failed to join PATH")?;
 
         let run = async move |batch: Vec<String>| {
             // TODO: combine stdout and stderr
