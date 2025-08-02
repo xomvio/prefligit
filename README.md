@@ -81,7 +81,7 @@ pipx install prefligit
 <summary>Homebrew</summary>
 
 ```console
-brew install j178/tap/prefligit
+brew install prefligit
 ```
 </details>
 
