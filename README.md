@@ -39,6 +39,10 @@ cargo fmt................................................................Passed
 cargo clippy.............................................................Passed
 ```
 
+`prefligit` is designed to be a drop-in alternative for the original `pre-commit` tool, so you can use it with your existing configurations and hooks.
+
+Please refer to the [official documentation](https://pre-commit.com/) for more information on how to configure and use pre-commit.
+
 ## Installation
 
 <details>
@@ -97,12 +101,11 @@ cargo install --locked --git https://github.com/j178/prefligit
 `prefligit` release artifacts can be downloaded directly from the [GitHub releases](https://github.com/j178/prefligit/releases).
 </details>
 
+If installed via the standalone installer, `prefligit` can update itself to the latest version:
 
-## Usage
-
-This tool is designed to be a drop-in alternative for the original pre-commit tool, so you can use it with your existing configurations and hooks.
-
-Please refer to the [official documentation](https://pre-commit.com/) for more information on how to configure and use pre-commit.
+```console
+$ prefligit self update
+```
 
 ## Acknowledgements
 
