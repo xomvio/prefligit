@@ -239,6 +239,41 @@ impl TestContext {
             .success();
     }
 
+    /// Run `git reset`.
+    pub fn git_reset(&self, target: &str) {
+        Command::new("git")
+            .arg("reset")
+            .arg(target)
+            .current_dir(&self.temp_dir)
+            .assert()
+            .success();
+    }
+
+    /// Run `git rm`.
+    pub fn git_rm(&self, path: &str) {
+        Command::new("git")
+            .arg("rm")
+            .arg("--cached")
+            .arg(path)
+            .current_dir(&self.temp_dir)
+            .assert()
+            .success();
+        let file_path = self.temp_dir.child(path);
+        if file_path.exists() {
+            fs_err::remove_file(file_path).unwrap();
+        }
+    }
+
+    /// Run `git clean`.
+    pub fn git_clean(&self) {
+        Command::new("git")
+            .arg("clean")
+            .arg("-fdx")
+            .current_dir(&self.temp_dir)
+            .assert()
+            .success();
+    }
+
     /// Write a `.pre-commit-config.yaml` file in the temporary directory.
     pub fn write_pre_commit_config(&self, content: &str) {
         self.temp_dir
