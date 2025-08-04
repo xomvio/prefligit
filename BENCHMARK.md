@@ -6,4 +6,4 @@
 
 Disk usage after installation:
 
-<img width="490" height="170" alt="image" src="https://github.com/user-attachments/assets/72702412-d7ad-45c8-a337-d36235b8e09e" />
+<img width="492" height="249" alt="Image" src="https://github.com/user-attachments/assets/d298d992-f3df-43a6-b7bd-ab5d2618b05b" />
