@@ -49,7 +49,7 @@ impl Deref for HookToRun {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 pub(crate) async fn run(
     config: Option<PathBuf>,
     hook_id: Option<String>,
@@ -58,11 +58,19 @@ pub(crate) async fn run(
     to_ref: Option<String>,
     all_files: bool,
     files: Vec<PathBuf>,
+    last_commit: bool,
     show_diff_on_failure: bool,
     extra_args: RunExtraArgs,
     verbose: bool,
     printer: Printer,
 ) -> Result<ExitStatus> {
+    // Handle --last-commit flag by converting it to HEAD~1..HEAD range
+    let (from_ref, to_ref) = if last_commit {
+        (Some("HEAD~1".to_string()), Some("HEAD".to_string()))
+    } else {
+        (from_ref, to_ref)
+    };
+
     // Prevent recursive post-checkout hooks.
     if matches!(hook_stage, Some(Stage::PostCheckout))
         && EnvVars::is_set(EnvVars::PREFLIGIT_INTERNAL__SKIP_POST_CHECKOUT)
