@@ -11,7 +11,7 @@
 prefligit is a reimagined version of pre-commit, built in Rust. It is designed to be a faster, dependency-free and drop-in alternative for it, while also providing some additional long-requested features.
 
 > [!WARNING]
-> This project is still in early stage of development, only a few of the original pre-commit features are implemented.
+> This project is still in early stage of development, some features are still not implemented.
 > It is not production-ready yet, but feel free to try it out and provide feedback.
 >
 > Current supported languages are `python`, `node`, `go`, `docker`, `docker-image`, `system`, `script` and `fail`.
@@ -19,7 +19,7 @@ prefligit is a reimagined version of pre-commit, built in Rust. It is designed t
 ## Features
 
 - 🚀 A single binary with no dependencies, does not require Python or any other runtime.
-- ⚡  About [10x faster](https://github.com/j178/prefligit/blob/master/BENCHMARK.md) than `pre-commit` and uses only a third of disk space.
+- ⚡ About [10x faster](https://github.com/j178/prefligit/blob/master/BENCHMARK.md) than `pre-commit` and uses only a third of disk space.
 - 🔄 Fully compatible with the original pre-commit configurations and hooks.
 - 🐍 Integration with [`uv`](https://github.com/astral-sh/uv) for managing Python virtual environments and dependencies.
 - 🛠️ Improved toolchain installations for Python, Node.js, Go, Rust and Ruby, shared between hooks.
@@ -47,9 +47,9 @@ For configuring `.pre-commit-config.yaml` and writing hooks, you can refer to th
 
 ## Why prefligit?
 
-### prefligit is 10x faster and more efficient
+### prefligit is way faster
 
-- It is written in Rust, which is more efficient than Python.
+- It is about [10x faster](https://github.com/j178/prefligit/blob/master/BENCHMARK.md) than `pre-commit` and uses only a third of disk space.
 - It redesigned how hook environments and toolchains are managed, they are all shared between hooks, which reduces the disk space usage and speeds up the installation process.
 - Repositories are cloned in parallel, and hooks are installed in parallel if their dependencies are disjoint.
 - It uses [`uv`](https://github.com/astral-sh/uv) for creating Python virtualenvs and installing dependencies, which is known for its speed and efficiency.
@@ -59,7 +59,7 @@ For configuring `.pre-commit-config.yaml` and writing hooks, you can refer to th
 
 - No need to install Python or any other runtime, just download a single binary.
 - No hassle with your Python version or virtual environments, prefligit automatically installs the required Python version and creates a virtual environment for you.
-- (TODO): Built-in support for workspaces (or monorepos), each project can have its own `.pre-commit-config.yaml` file.
+- (TODO): Built-in support for workspaces (or monorepos), each sub-project can have its own `.pre-commit-config.yaml` file.
 - `prefligit run` has some improvements over `pre-commit run`, such as:
     - `prefligit run --directory <dir>` runs hooks for files in the specified directory, no need to use `git ls-files -- <dir> | xargs pre-commit run --files` anymore.
     - `prefligit run --last-commit` runs hooks for files changed in the last commit.
