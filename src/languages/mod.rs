@@ -1,22 +1,28 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::Result;
-
-use crate::builtin;
+use crate::archive::ArchiveExtension;
 use crate::config::Language;
 use crate::hook::{Hook, InstalledHook};
 use crate::store::Store;
+use crate::{archive, builtin};
+use anyhow::{Context, Result};
+use futures::TryStreamExt;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tracing::trace;
 
 mod docker;
 mod docker_image;
 mod fail;
+mod golang;
 mod node;
 mod python;
 mod script;
 mod system;
 pub mod version;
 
+static GOLANG: golang::Golang = golang::Golang;
 static PYTHON: python::Python = python::Python;
 static NODE: node::Node = node::Node;
 static SYSTEM: system::System = system::System;
@@ -90,7 +96,8 @@ impl Language {
     pub fn supported(lang: Language) -> bool {
         matches!(
             lang,
-            Self::Python
+            Self::Golang
+                | Self::Python
                 | Self::Node
                 | Self::System
                 | Self::Fail
@@ -137,6 +144,7 @@ impl Language {
 
     pub async fn install(&self, hook: Arc<Hook>, store: &Store) -> Result<InstalledHook> {
         match self {
+            Self::Golang => GOLANG.install(hook, store).await,
             Self::Python => PYTHON.install(hook, store).await,
             Self::Node => NODE.install(hook, store).await,
             Self::System => SYSTEM.install(hook, store).await,
@@ -150,6 +158,7 @@ impl Language {
 
     pub async fn check_health(&self) -> Result<()> {
         match self {
+            Self::Golang => GOLANG.check_health().await,
             Self::Python => PYTHON.check_health().await,
             Self::Node => NODE.check_health().await,
             Self::System => SYSTEM.check_health().await,
@@ -174,6 +183,7 @@ impl Language {
         }
 
         match self {
+            Self::Golang => GOLANG.run(hook, filenames, env_vars, store).await,
             Self::Python => PYTHON.run(hook, filenames, env_vars, store).await,
             Self::Node => NODE.run(hook, filenames, env_vars, store).await,
             Self::System => SYSTEM.run(hook, filenames, env_vars, store).await,
@@ -184,4 +194,125 @@ impl Language {
             _ => UNIMPLEMENTED.run(hook, filenames, env_vars, store).await,
         }
     }
+}
+
+/// Create a symlink or copy the file on Windows.
+/// Tries symlink first, falls back to copy if symlink fails.
+async fn create_symlink_or_copy(source: &Path, target: &Path) -> Result<()> {
+    if target.exists() {
+        fs_err::tokio::remove_file(target).await?;
+    }
+
+    #[cfg(not(windows))]
+    {
+        // Try symlink on Unix systems
+        match fs_err::tokio::symlink(source, target).await {
+            Ok(()) => {
+                trace!(
+                    "Created symlink from {} to {}",
+                    source.display(),
+                    target.display()
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                trace!(
+                    "Failed to create symlink from {} to {}: {}",
+                    source.display(),
+                    target.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Try Windows symlink API (requires admin privileges)
+        use std::os::windows::fs::symlink_file;
+        match symlink_file(source, target) {
+            Ok(()) => {
+                trace!(
+                    "Created Windows symlink from {} to {}",
+                    source.display(),
+                    target.display()
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                trace!(
+                    "Failed to create Windows symlink from {} to {}: {}",
+                    source.display(),
+                    target.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Fallback to copy
+    trace!(
+        "Falling back to copy from {} to {}",
+        source.display(),
+        target.display()
+    );
+    fs_err::tokio::copy(source, target).await.with_context(|| {
+        format!(
+            "Failed to copy file from {} to {}",
+            source.display(),
+            target.display(),
+        )
+    })?;
+
+    Ok(())
+}
+
+async fn download_and_extract(
+    client: &reqwest::Client,
+    url: &str,
+    target: &Path,
+    filename: &str,
+    scratch: &Path,
+) -> Result<()> {
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("Failed to download file from {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "Failed to download file from {}: {}",
+            url,
+            response.status()
+        );
+    }
+
+    let tarball = response
+        .bytes_stream()
+        .map_err(std::io::Error::other)
+        .into_async_read()
+        .compat();
+
+    let temp_dir = tempfile::tempdir_in(scratch)?;
+    trace!(url = %url, temp_dir = ?temp_dir.path(), "Downloading");
+
+    let ext = ArchiveExtension::from_path(filename)?;
+    archive::unpack(tarball, ext, temp_dir.path()).await?;
+
+    let extracted = match archive::strip_component(temp_dir.path()) {
+        Ok(top_level) => top_level,
+        Err(archive::Error::NonSingularArchive(_)) => temp_dir.keep(),
+        Err(err) => return Err(err.into()),
+    };
+
+    if target.is_dir() {
+        trace!(target = %target.display(), "Removing existing target");
+        fs_err::tokio::remove_dir_all(&target).await?;
+    }
+
+    trace!(temp_dir = ?extracted, target = %target.display(), "Moving to target");
+    // TODO: retry on Windows
+    fs_err::tokio::rename(extracted, target).await?;
+
+    Ok(())
 }

@@ -12,7 +12,7 @@ use constants::env_vars::EnvVars;
 
 use crate::fs::LockedFile;
 use crate::process::Cmd;
-use crate::store::{CacheBucket, Store, ToolBucket};
+use crate::store::{CacheBucket, Store};
 
 // The version of `uv` to install. Should update periodically.
 const UV_VERSION: &str = "0.8.3";
@@ -221,7 +221,7 @@ impl Uv {
         Ok(source)
     }
 
-    pub async fn install(store: &Store) -> Result<Self> {
+    pub async fn install(uv_dir: &Path) -> Result<Self> {
         // 1) Check if `uv` is installed already.
         // TODO: check minimum supported uv version
         if let Ok(uv) = UV_EXE.as_ref() {
@@ -229,7 +229,6 @@ impl Uv {
         }
 
         // 2) Check if `uv` is installed by `prefligit`
-        let uv_dir = store.tools_path(ToolBucket::Uv);
         let uv = uv_dir.join("uv").with_extension(env::consts::EXE_EXTENSION);
         if uv.is_file() {
             trace!(uv = %uv.display(), "Found managed uv");
@@ -245,7 +244,7 @@ impl Uv {
         }
 
         let source = Self::select_source().await?;
-        source.install(&uv_dir).await?;
+        source.install(uv_dir).await?;
 
         Ok(Self::new(uv))
     }

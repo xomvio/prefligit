@@ -1,23 +1,22 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::env::consts::EXE_EXTENSION;
-use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use tracing::{debug, trace};
+use tracing::debug;
 
 use constants::env_vars::EnvVars;
 
 use crate::hook::InstalledHook;
 use crate::hook::{Hook, InstallInfo};
-use crate::languages::LanguageImpl;
 use crate::languages::node::NodeRequest;
 use crate::languages::node::installer::{NodeInstaller, bin_dir, lib_dir};
 use crate::languages::node::version::EXTRA_KEY_LTS;
 use crate::languages::version::LanguageRequest;
+use crate::languages::{LanguageImpl, create_symlink_or_copy};
 use crate::process::Cmd;
-use crate::run::{prepend_path, run_by_batch};
+use crate::run::{prepend_paths, run_by_batch};
 use crate::store::{Store, ToolBucket};
 
 #[derive(Debug, Copy, Clone)]
@@ -60,13 +59,15 @@ impl LanguageImpl for Node {
         fs_err::tokio::create_dir_all(&bin_dir).await?;
         fs_err::tokio::create_dir_all(&lib_dir).await?;
 
+        // TODO: do we really need to create a symlink for `node` and `npm`?
+        //   What about adding them to PATH directly?
         // Create symlink or copy on Windows
-        Self::create_symlink_or_copy(
+        create_symlink_or_copy(
             node.node(),
             &bin_dir.join("node").with_extension(EXE_EXTENSION),
         )
         .await?;
-        Self::create_symlink_or_copy(
+        create_symlink_or_copy(
             node.npm(),
             &bin_dir.join("npm").with_extension(EXE_EXTENSION),
         )
@@ -126,7 +127,7 @@ impl LanguageImpl for Node {
         _store: &Store,
     ) -> Result<(i32, Vec<u8>)> {
         let env_dir = hook.env_path().expect("Node must have env path");
-        let new_path = prepend_path(&bin_dir(env_dir)).context("Failed to join PATH")?;
+        let new_path = prepend_paths(&[&bin_dir(env_dir)]).context("Failed to join PATH")?;
 
         let entry = hook.entry.parsed()?;
         let run = async move |batch: Vec<String>| {
@@ -174,78 +175,5 @@ impl LanguageImpl for Node {
         }
 
         Ok((combined_status, combined_output))
-    }
-}
-
-impl Node {
-    /// Create a symlink or copy the file on Windows.
-    /// Tries symlink first, falls back to copy if symlink fails.
-    async fn create_symlink_or_copy(source: &Path, target: &Path) -> anyhow::Result<()> {
-        if target.exists() {
-            fs_err::tokio::remove_file(target).await?;
-        }
-
-        #[cfg(not(windows))]
-        {
-            // Try symlink on Unix systems
-            match fs_err::tokio::symlink(source, target).await {
-                Ok(()) => {
-                    trace!(
-                        "Created symlink from {} to {}",
-                        source.display(),
-                        target.display()
-                    );
-                    return Ok(());
-                }
-                Err(e) => {
-                    trace!(
-                        "Failed to create symlink from {} to {}: {}",
-                        source.display(),
-                        target.display(),
-                        e
-                    );
-                }
-            }
-        }
-
-        #[cfg(windows)]
-        {
-            // Try Windows symlink API (requires admin privileges)
-            use std::os::windows::fs::symlink_file;
-            match symlink_file(source, target) {
-                Ok(()) => {
-                    trace!(
-                        "Created Windows symlink from {} to {}",
-                        source.display(),
-                        target.display()
-                    );
-                    return Ok(());
-                }
-                Err(e) => {
-                    trace!(
-                        "Failed to create Windows symlink from {} to {}: {}",
-                        source.display(),
-                        target.display(),
-                        e
-                    );
-                }
-            }
-        }
-
-        // Fallback to copy
-        trace!(
-            "Falling back to copy from {} to {}",
-            source.display(),
-            target.display()
-        );
-        fs_err::tokio::copy(source, target).await.with_context(|| {
-            format!(
-                "Failed to copy file from {} to {}",
-                source.display(),
-                target.display(),
-            )
-        })?;
-
-        Ok(())
     }
 }

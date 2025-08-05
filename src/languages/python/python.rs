@@ -16,7 +16,7 @@ use crate::languages::python::uv::Uv;
 use crate::languages::version::LanguageRequest;
 use crate::process;
 use crate::process::Cmd;
-use crate::run::{prepend_path, run_by_batch};
+use crate::run::{prepend_paths, run_by_batch};
 use crate::store::{Store, ToolBucket};
 
 #[derive(Debug, Copy, Clone)]
@@ -47,7 +47,8 @@ fn to_uv_python_request(request: &LanguageRequest) -> Option<String> {
 
 impl LanguageImpl for Python {
     async fn install(&self, hook: Arc<Hook>, store: &Store) -> Result<InstalledHook> {
-        let uv = Uv::install(store).await?;
+        let uv_dir = store.tools_path(ToolBucket::Uv);
+        let uv = Uv::install(&uv_dir).await?;
 
         let mut info = InstallInfo::new(
             hook.language,
@@ -134,7 +135,7 @@ impl LanguageImpl for Python {
         _store: &Store,
     ) -> Result<(i32, Vec<u8>)> {
         let env_dir = hook.env_path().expect("Python must have env path");
-        let new_path = prepend_path(&bin_dir(env_dir)).context("Failed to join PATH")?;
+        let new_path = prepend_paths(&[&bin_dir(env_dir)]).context("Failed to join PATH")?;
         let entry = hook.entry.parsed()?;
 
         let run = async move |batch: Vec<String>| {

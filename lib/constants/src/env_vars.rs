@@ -31,6 +31,10 @@ impl EnvVars {
     pub const NPM_CONFIG_USERCONFIG: &'static str = "NPM_CONFIG_USERCONFIG";
     pub const NPM_CONFIG_PREFIX: &'static str = "NPM_CONFIG_PREFIX";
     pub const NODE_PATH: &'static str = "NODE_PATH";
+
+    // Go related
+    pub const GOTOOLCHAIN: &'static str = "GOTOOLCHAIN";
+    pub const GOPATH: &'static str = "GOPATH";
 }
 
 impl EnvVars {
