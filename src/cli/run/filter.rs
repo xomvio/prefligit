@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+use std::path::Path;
 
 use anyhow::Result;
 use fancy_regex as regex;
@@ -16,19 +17,22 @@ use crate::identify::tags_from_path;
 use crate::{git, warn_user};
 
 /// Filter filenames by include/exclude patterns.
-pub struct FilenameFilter {
+pub(crate) struct FilenameFilter {
     include: Option<Regex>,
     exclude: Option<Regex>,
 }
 
 impl FilenameFilter {
-    pub fn new(include: Option<&str>, exclude: Option<&str>) -> Result<Self, Box<regex::Error>> {
+    pub(crate) fn new(
+        include: Option<&str>,
+        exclude: Option<&str>,
+    ) -> Result<Self, Box<regex::Error>> {
         let include = include.map(Regex::new).transpose()?;
         let exclude = exclude.map(Regex::new).transpose()?;
         Ok(Self { include, exclude })
     }
 
-    pub fn filter(&self, filename: impl AsRef<str>) -> bool {
+    pub(crate) fn filter(&self, filename: impl AsRef<str>) -> bool {
         let filename = filename.as_ref();
         if let Some(re) = &self.include {
             if !re.is_match(filename).unwrap_or(false) {
@@ -43,7 +47,7 @@ impl FilenameFilter {
         true
     }
 
-    pub fn from_hook(hook: &Hook) -> Result<Self, Box<regex::Error>> {
+    pub(crate) fn from_hook(hook: &Hook) -> Result<Self, Box<regex::Error>> {
         Self::new(hook.files.as_deref(), hook.exclude.as_deref())
     }
 }
@@ -86,12 +90,12 @@ impl<'a> FileTagFilter<'a> {
     }
 }
 
-pub struct FileFilter<'a> {
+pub(crate) struct FileFilter<'a> {
     filenames: Vec<&'a String>,
 }
 
 impl<'a> FileFilter<'a> {
-    pub fn new(
+    pub(crate) fn new(
         filenames: &'a [String],
         include: Option<&str>,
         exclude: Option<&str>,
@@ -106,11 +110,11 @@ impl<'a> FileFilter<'a> {
         Ok(Self { filenames })
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.filenames.len()
     }
 
-    pub fn by_tag(&self, hook: &Hook) -> Vec<&String> {
+    pub(crate) fn by_tag(&self, hook: &Hook) -> Vec<&String> {
         let filter = FileTagFilter::from_hook(hook);
         let filenames: Vec<_> = self
             .filenames
@@ -131,7 +135,7 @@ impl<'a> FileFilter<'a> {
         filenames
     }
 
-    pub fn for_hook(&self, hook: &Hook) -> Result<Vec<&String>, Box<regex::Error>> {
+    pub(crate) fn for_hook(&self, hook: &Hook) -> Result<Vec<&String>, Box<regex::Error>> {
         let filter = FilenameFilter::from_hook(hook)?;
         let filenames = self
             .filenames
@@ -158,17 +162,18 @@ impl<'a> FileFilter<'a> {
 }
 
 #[derive(Default)]
-pub struct CollectOptions {
-    pub hook_stage: Option<Stage>,
-    pub from_ref: Option<String>,
-    pub to_ref: Option<String>,
-    pub all_files: bool,
-    pub files: Vec<PathBuf>,
-    pub commit_msg_filename: Option<PathBuf>,
+pub(crate) struct CollectOptions {
+    pub(crate) hook_stage: Option<Stage>,
+    pub(crate) from_ref: Option<String>,
+    pub(crate) to_ref: Option<String>,
+    pub(crate) all_files: bool,
+    pub(crate) files: Vec<String>,
+    pub(crate) directories: Vec<String>,
+    pub(crate) commit_msg_filename: Option<String>,
 }
 
 impl CollectOptions {
-    pub fn with_all_files(mut self, all_files: bool) -> Self {
+    pub(crate) fn with_all_files(mut self, all_files: bool) -> Self {
         self.all_files = all_files;
         self
     }
@@ -176,13 +181,14 @@ impl CollectOptions {
 
 /// Get all filenames to run hooks on.
 #[allow(clippy::too_many_arguments)]
-pub async fn collect_files(opts: CollectOptions) -> Result<Vec<String>> {
+pub(crate) async fn collect_files(opts: CollectOptions) -> Result<Vec<String>> {
     let CollectOptions {
         hook_stage,
         from_ref,
         to_ref,
         all_files,
         files,
+        directories,
         commit_msg_filename,
     } = opts;
 
@@ -192,6 +198,7 @@ pub async fn collect_files(opts: CollectOptions) -> Result<Vec<String>> {
         to_ref,
         all_files,
         files,
+        directories,
         commit_msg_filename,
     )
     .await?;
@@ -213,8 +220,9 @@ async fn collect_files_from_args(
     from_ref: Option<String>,
     to_ref: Option<String>,
     all_files: bool,
-    files: Vec<PathBuf>,
-    commit_msg_filename: Option<PathBuf>,
+    mut files: Vec<String>,
+    mut directories: Vec<String>,
+    commit_msg_filename: Option<String>,
 ) -> Result<Vec<String>> {
     if let Some(hook_stage) = hook_stage {
         if !hook_stage.operate_on_files() {
@@ -222,10 +230,7 @@ async fn collect_files_from_args(
         }
         if hook_stage == Stage::PrepareCommitMsg || hook_stage == Stage::CommitMsg {
             return Ok(vec![
-                commit_msg_filename
-                    .expect("commit message filename is required")
-                    .to_string_lossy()
-                    .to_string(),
+                commit_msg_filename.expect("commit message filename is required"),
             ]);
         }
     }
@@ -241,7 +246,7 @@ async fn collect_files_from_args(
         return Ok(files);
     }
 
-    if !files.is_empty() {
+    if !files.is_empty() || !directories.is_empty() {
         // By default, `pre-commit` add `types: [file]` for all hooks,
         // so `pre-commit` will ignore user provided directories.
         // We do the same here for compatibility.
@@ -253,13 +258,21 @@ async fn collect_files_from_args(
         // we expand the directories to files and pass them to the hook.
         // See: https://github.com/pre-commit/pre-commit/issues/1173
 
-        let (exists, non_exists): (Vec<_>, Vec<_>) = files.into_iter().partition_map(|filename| {
-            if filename.exists() {
-                Either::Left(filename.to_string_lossy().to_string())
-            } else {
-                Either::Right(filename.to_string_lossy().to_string())
-            }
-        });
+        for filename in &mut files {
+            normalize_path(filename);
+        }
+        for dir in &mut directories {
+            normalize_path(dir);
+        }
+
+        let (mut exists, non_exists): (HashSet<_>, Vec<_>) =
+            files.into_iter().partition_map(|filename| {
+                if Path::new(&filename).exists() {
+                    Either::Left(filename)
+                } else {
+                    Either::Right(filename)
+                }
+            });
         if !non_exists.is_empty() {
             if non_exists.len() == 1 {
                 warn_user!(
@@ -273,11 +286,19 @@ async fn collect_files_from_args(
                 );
             }
         }
+
+        for dir in directories {
+            let dir_files = git::git_ls_files(Some(Path::new(&dir))).await?;
+            for file in dir_files {
+                exists.insert(file);
+            }
+        }
+
         debug!("Files passed as arguments: {}", exists.len());
-        return Ok(exists);
+        return Ok(exists.into_iter().collect());
     }
     if all_files {
-        let files = git::get_all_files().await?;
+        let files = git::git_ls_files(None).await?;
         debug!("All files in the repo: {}", files.len());
         return Ok(files);
     }

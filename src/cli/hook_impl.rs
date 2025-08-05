@@ -55,6 +55,7 @@ pub(crate) async fn hook_impl(
         run_args.to_ref,
         run_args.all_files,
         vec![],
+        vec![],
         false, // last_commit is always false in hook implementation context
         false,
         run_args.extra,
@@ -74,10 +75,10 @@ fn to_run_args(hook_type: HookType, args: &[OsString]) -> RunArgs {
             // TODO: implement pre-push
         }
         HookType::CommitMsg => {
-            run_args.extra.commit_msg_filename = Some(PathBuf::from(&args[0]));
+            run_args.extra.commit_msg_filename = Some(args[0].to_string_lossy().into_owned());
         }
         HookType::PrepareCommitMsg => {
-            run_args.extra.commit_msg_filename = Some(PathBuf::from(&args[0]));
+            run_args.extra.commit_msg_filename = Some(args[0].to_string_lossy().into_owned());
             if args.len() > 1 {
                 run_args.extra.prepare_commit_message_source =
                     Some(args[1].to_string_lossy().into_owned());

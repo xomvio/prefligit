@@ -58,7 +58,8 @@ pub(crate) async fn run(
     from_ref: Option<String>,
     to_ref: Option<String>,
     all_files: bool,
-    files: Vec<PathBuf>,
+    files: Vec<String>,
+    directories: Vec<String>,
     last_commit: bool,
     show_diff_on_failure: bool,
     extra_args: RunExtraArgs,
@@ -79,7 +80,7 @@ pub(crate) async fn run(
         return Ok(ExitStatus::Success);
     }
 
-    let should_stash = !all_files && files.is_empty();
+    let should_stash = !all_files && files.is_empty() && directories.is_empty();
 
     // Check if we have unresolved merge conflict files and fail fast.
     if should_stash && git::has_unmerged_paths().await? {
@@ -190,6 +191,7 @@ pub(crate) async fn run(
         to_ref,
         all_files,
         files,
+        directories,
         commit_msg_filename: extra_args.commit_msg_filename.clone(),
     })
     .await?;

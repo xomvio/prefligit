@@ -237,7 +237,7 @@ pub(crate) struct RunExtraArgs {
     #[arg(long, hide = true)]
     pub(crate) pre_rebase_branch: Option<String>,
     #[arg(long, hide = true, required_if_eq_any = [("hook_stage", "prepare-commit-msg"), ("hook_stage", "commit-msg")])]
-    pub(crate) commit_msg_filename: Option<PathBuf>,
+    pub(crate) commit_msg_filename: Option<String>,
     #[arg(long, hide = true)]
     pub(crate) prepare_commit_message_source: Option<String>,
     #[arg(long, hide = true)]
@@ -264,7 +264,12 @@ pub(crate) struct RunArgs {
     pub(crate) all_files: bool,
     /// Specific filenames to run hooks on.
     #[arg(long, conflicts_with_all = ["all_files", "from_ref", "to_ref"])]
-    pub(crate) files: Vec<PathBuf>,
+    pub(crate) files: Vec<String>,
+    /// Run hooks on all files in the specified directories.
+    ///
+    /// You can specify multiple directories. It can be used in conjunction with `--files`.
+    #[arg(short, long, value_name = "DIR", conflicts_with_all = ["all_files", "from_ref", "to_ref"])]
+    pub(crate) directory: Vec<String>,
     /// The original ref in a `from_ref...to_ref` diff expression.
     /// Files changed in this diff will be run through the hooks.
     #[arg(short = 's', long, alias = "source", requires = "to_ref")]
@@ -274,7 +279,7 @@ pub(crate) struct RunArgs {
     #[arg(short = 'o', long, alias = "origin", requires = "from_ref")]
     pub(crate) to_ref: Option<String>,
     /// Run hooks against the last commit (HEAD~1..HEAD).
-    #[arg(long, conflicts_with_all = ["all_files", "files", "from_ref", "to_ref"])]
+    #[arg(long, conflicts_with_all = ["all_files", "files", "directory", "from_ref", "to_ref"])]
     pub(crate) last_commit: bool,
     /// The stage during which the hook is fired.
     #[arg(long)]
