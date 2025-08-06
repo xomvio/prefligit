@@ -63,7 +63,7 @@ For configuring `.pre-commit-config.yaml` and writing hooks, you can refer to th
 - `prefligit run` has some improvements over `pre-commit run`, such as:
     - `prefligit run --directory <dir>` runs hooks for files in the specified directory, no need to use `git ls-files -- <dir> | xargs pre-commit run --files` anymore.
     - `prefligit run --last-commit` runs hooks for files changed in the last commit.
-- prefligit provides shell completions for `bash`, `zsh`, `fish` and `powershell`.
+- (TODO): prefligit provides shell completions for `prefligit run <hook_id>` command, so you can easily find the available hooks.
 
 ## Installation
 
