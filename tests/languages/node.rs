@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::ffi::OsString;
+
 use assert_fs::assert::PathAssert;
 use assert_fs::fixture::{FileWriteStr, PathChild};
 
@@ -147,10 +150,29 @@ fn additional_dependencies() {
     "###);
 }
 
+fn remove_node_from_path() -> anyhow::Result<Option<OsString>> {
+    let Ok(node_dirs) = which::which_all("node") else {
+        return Ok(None);
+    };
+
+    let node_dirs: HashSet<_> = node_dirs
+        .filter_map(|path| path.parent().map(std::path::Path::to_path_buf))
+        .collect();
+
+    #[allow(clippy::disallowed_methods)]
+    let current_path = std::env::var("PATH").unwrap_or_default();
+
+    let new_path_entries: Vec<_> = std::env::split_paths(&current_path)
+        .filter(|path| !node_dirs.contains(path.as_path()))
+        .collect();
+
+    Ok(Some(std::env::join_paths(new_path_entries)?))
+}
+
 /// Test `https://github.com/thlorenz/doctoc` works correctly with prefligit.
 /// Previously, prefligit did not install its dependencies correctly.
 #[test]
-fn doctoc() {
+fn doctoc() -> anyhow::Result<()> {
     let context = TestContext::new();
     context.init_project();
     context.write_pre_commit_config(indoc::indoc! {r"
@@ -161,14 +183,17 @@ fn doctoc() {
               - id: doctoc
                 name: Add TOC for Markdown
     "});
-    context
-        .work_dir()
-        .child("README.md")
-        .write_str("# Hello World\n\nThis is a test file.\n\n## Subsection\n\nMore content here.\n")
-        .unwrap();
+    context.work_dir().child("README.md").write_str(
+        "# Hello World\n\nThis is a test file.\n\n## Subsection\n\nMore content here.\n",
+    )?;
     context.git_add(".");
 
-    cmd_snapshot!(context.filters(), context.run(), @r#"
+    #[allow(clippy::disallowed_methods)]
+    let path = remove_node_from_path()?.unwrap_or_else(|| std::env::var_os("PATH").unwrap());
+
+    // Set PATH to . to mask the system installed node,
+    // ensure that `npm` runs correctly.
+    cmd_snapshot!(context.filters(), context.run().env("PATH", path), @r#"
     success: false
     exit_code: 1
     ----- stdout -----
@@ -185,4 +210,6 @@ fn doctoc() {
 
     ----- stderr -----
     "#);
+
+    Ok(())
 }
