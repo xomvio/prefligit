@@ -51,7 +51,7 @@ static UV_EXE: LazyLock<Option<(PathBuf, Version)>> = LazyLock::new(|| {
                 return Some((uv_path, version));
             }
             warn!(
-                "Detected system uv version {} — expected a version between {} and {}.",
+                "Detected system uv version `{}` — expected a version between `{}` and `{}`.",
                 version, min_version, max_version
             );
         }
@@ -156,6 +156,8 @@ impl InstallSource {
     }
 
     async fn install_from_pip(&self, target: &Path) -> Result<()> {
+        // When running `pip install` in multiple threads, it can fail
+        // without extracting files properly.
         Cmd::new("python3", "pip install uv")
             .arg("-m")
             .arg("pip")
@@ -164,7 +166,7 @@ impl InstallSource {
             .arg(target)
             .arg(format!("uv=={MAX_UV_VERSION}"))
             .check(true)
-            .output()
+            .status()
             .await?;
 
         let bin_dir = target.join(if cfg!(windows) { "Scripts" } else { "bin" });
