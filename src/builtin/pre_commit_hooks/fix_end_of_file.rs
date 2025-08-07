@@ -7,9 +7,7 @@ use crate::run::CONCURRENCY;
 
 pub(crate) async fn fix_end_of_file(_hook: &Hook, filenames: &[&String]) -> Result<(i32, Vec<u8>)> {
     let mut tasks = futures::stream::iter(filenames)
-        .map(async |filename| {
-            fix_file(filename).await
-        })
+        .map(async |filename| fix_file(filename).await)
         .buffered(*CONCURRENCY);
 
     let mut code = 0;
@@ -29,22 +27,12 @@ enum LineEnding {
     Lf,
     Cr,
 }
-async fn empty_file (filename: &str) -> Result<(i32, Vec<u8>)> {
+
+async fn empty_file(filename: &str) -> Result<(i32, Vec<u8>)> {
     // Make the file empty
     fs_err::tokio::remove_file(filename).await?;
     fs_err::tokio::File::create(filename).await?;
     Ok((0, Vec::new()))
-}
-
-async fn rev_pos(mut reader: BufReader<fs_err::tokio::File>, pos: u64) -> Result<u64> {
-    let mut pos = reader.seek(std::io::SeekFrom::Start(pos)).await?;
-    if pos == 0 {
-        return Ok(0); // File is empty
-    }
-    pos -= 1; // Move to the last byte
-    // Move the reader to the position of the last byte
-    reader.seek(std::io::SeekFrom::Start(pos)).await?;
-    Ok(pos)
 }
 
 struct ReverseReader {
@@ -57,17 +45,12 @@ impl ReverseReader {
         let reader = BufReader::new(file);
         let file_len = reader.get_ref().metadata().await?.len();
         if file_len == 0 {
-            return Ok(Self {
-                reader,
-                pos: 0, // File is empty
-            });
+            // File is empty
+            return Ok(Self { reader, pos: 0 });
         }
 
         let pos = file_len - 1; // Start from the last byte
-        Ok(Self {
-            reader,
-            pos,
-        })
+        Ok(Self { reader, pos })
     }
     async fn read_backwards(&mut self) -> Result<u8> {
         self.reader.seek(std::io::SeekFrom::Start(self.pos)).await?;
@@ -81,9 +64,7 @@ impl ReverseReader {
     }
 }
 
-
 async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
-
     let src_file = fs_err::tokio::File::open(filename).await?;
     let file_len = src_file.metadata().await?.len();
 
@@ -106,7 +87,7 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                 // We will make it empty
                 empty_file(filename).await?;
                 return Ok((1, format!("Fixing {filename}\n").into_bytes()));
-            },
+            }
             Ok(c) => {
                 if c == b'\r' {
                     // File ends with CRLF
@@ -121,7 +102,7 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                     // Nothing to fix
                     return Ok((0, Vec::new()));
                 }
-            },
+            }
             Err(e) => {
                 return Err(anyhow::anyhow!("Error reading file: {}", e));
             }
@@ -143,38 +124,36 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                 Ok(c) => {
                     if c == b'\r' {
                         // Newline character is CR
-                        break (0, LineEnding::Cr)
+                        break (0, LineEnding::Cr);
                     } else if c == b'\n' {
                         // We found a \n, see if the previous character is \r
                         match reader.read_backwards().await {
                             Ok(0) => {
                                 // No previous character, so we have only one LF
                                 // This is an edge case where we have one LF in the first byte of the file
-                                break (0, LineEnding::Lf)
-                            },
+                                break (0, LineEnding::Lf);
+                            }
                             Ok(c) => {
                                 if c == b'\r' {
                                     // Newline character is CRLF
-                                    break (0, LineEnding::Crlf)
+                                    break (0, LineEnding::Crlf);
                                 }
                                 // Newline character is LF
-                                break (0, LineEnding::Lf)
-                            },
+                                break (0, LineEnding::Lf);
+                            }
                             Err(e) => {
                                 return Err(anyhow::anyhow!("Error reading file: {}", e));
                             }
-                            
                         }
                     }
                     // else
                     // No newline character found, continue reading backwards
-                },
+                }
                 Err(e) => {
                     return Err(anyhow::anyhow!("Error reading file: {}", e));
                 }
             }
         }
-
     };
 
     // Count newlines at the end of the file
@@ -188,7 +167,7 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                     // Whole file is newlines
                     empty_file(filename).await?;
                     return Ok((1, format!("Fixing {filename}\n").into_bytes()));
-                },
+                }
                 Ok(c) => {
                     match line_ending {
                         LineEnding::Lf => {
@@ -198,7 +177,7 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                                 // If we read something else, we stop
                                 break;
                             }
-                        },
+                        }
                         LineEnding::Crlf => {
                             if c == b'\n' {
                                 // If we read LF, check if the previous character was CR
@@ -209,8 +188,11 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                                         // However, since we reached the beginning of the file, this still means all the file is newlines
                                         // We will make it empty
                                         empty_file(filename).await?;
-                                        return Ok((1, format!("Fixing {filename}\n").into_bytes()));
-                                    },
+                                        return Ok((
+                                            1,
+                                            format!("Fixing {filename}\n").into_bytes(),
+                                        ));
+                                    }
                                     Ok(c) => {
                                         if c == b'\r' {
                                             newlines += 1; // Count CRLF
@@ -219,7 +201,7 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                                             // However, last newline was CRLF, so we stop counting
                                             break;
                                         }
-                                    },
+                                    }
                                     Err(e) => {
                                         return Err(anyhow::anyhow!("Error reading file: {}", e));
                                     }
@@ -227,11 +209,12 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                             }
                             /*else if c == b'\r' {
                                 // Already counted CRLF, so we don't count it again
-                            }*/ else {
+                            }*/
+                            else {
                                 // If we read something else, we stop
                                 break;
                             }
-                        },
+                        }
                         LineEnding::Cr => {
                             if c == b'\r' {
                                 newlines += 1; // Count CR
@@ -241,7 +224,7 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
                             }
                         }
                     }
-                },
+                }
                 Err(e) => {
                     return Err(anyhow::anyhow!("Error reading file: {}", e));
                 }
@@ -252,64 +235,68 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
     // It's time to fix the newlines at the end of the file
     // If we have more than one newline, we will keep only one
 
-    // Calculate the new content length    
+    // Calculate the new content length
     let new_file_len = match newlines.cmp(&1) {
         std::cmp::Ordering::Equal => {
             // We have only one newline at the end, nothing to fix
             return Ok((0, Vec::new()));
-        },
+        }
         std::cmp::Ordering::Greater => {
             // We have more than one newline, should be only one
             match line_ending {
                 LineEnding::Crlf => file_len - (newlines - 1) * 2, // CRLF is 2 bytes. So we remove 2 bytes for each
                 LineEnding::Cr | LineEnding::Lf => file_len - (newlines - 1),
             }
-        },
+        }
         std::cmp::Ordering::Less => {
             // We have no newlines at the end, we will add one
             match line_ending {
                 LineEnding::Crlf => file_len + 2, // Add CRLF byte length
-                LineEnding::Cr | LineEnding::Lf => file_len + 1,   // Add CR or LF byte length
+                LineEnding::Cr | LineEnding::Lf => file_len + 1, // Add CR or LF byte length
             }
         }
     };
 
     // re-define the file reader to start from the beginning
     let mut reader = BufReader::new(fs_err::tokio::File::open(filename).await?);
-    
+
     // Define Buffered Writer to write to a temporary file
     let mut writer = BufWriter::new(fs_err::tokio::File::create(format!("{filename}.tmp")).await?);
 
     let mut buf = [0u8; 1]; // Buffer to read one byte at a time
 
-    if new_file_len < file_len {
-        // We will truncate the file
-        for _ in 0..new_file_len {
-            // Read and write one byte at a time, discard the last bytes
-            reader.read_exact(&mut buf).await?;
-            writer.write_all(&buf).await?;
+    match new_file_len.cmp(&file_len) {
+        std::cmp::Ordering::Less => {
+            // We will truncate the file
+            // Read only the necessary bytes and write them to the temporary file
+            for _ in 0..new_file_len {
+                reader.read_exact(&mut buf).await?;
+                writer.write_all(&buf).await?;
+            }
         }
-    }
-    else if new_file_len == file_len {
-        // The file is already the correct length, no need to fix
-        return Ok((0, Vec::new()));
-    } else {
-        // We will extend the file
-        for _ in 0..file_len {
-            // Read and write one byte at a time, keep the original content
-            reader.read_exact(&mut buf).await?;
-            writer.write_all(&buf).await?;
+        std::cmp::Ordering::Equal => {
+            // The file is already the correct length, no need to fix
+            return Ok((0, Vec::new()));
         }
-        // Now we need to add the newline at the end
-        match line_ending {
-            LineEnding::Crlf => {
-                writer.write_all(b"\r\n").await?;
-            },
-            LineEnding::Lf => {
-                writer.write_all(b"\n").await?;
-            },            
-            LineEnding::Cr => {
-                writer.write_all(b"\r").await?;
+        std::cmp::Ordering::Greater => {
+            // We will extend the file
+            // Read the whole file and write it to the temporary file
+            for _ in 0..file_len {
+                reader.read_exact(&mut buf).await?;
+                writer.write_all(&buf).await?;
+            }
+
+            // Now we need to add the newline at the end
+            match line_ending {
+                LineEnding::Crlf => {
+                    writer.write_all(b"\r\n").await?;
+                }
+                LineEnding::Lf => {
+                    writer.write_all(b"\n").await?;
+                }
+                LineEnding::Cr => {
+                    writer.write_all(b"\r").await?;
+                }
             }
         }
     }
@@ -322,17 +309,14 @@ async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
     fs_err::tokio::rename(format!("{filename}.tmp"), filename).await?;
 
     Ok((1, format!("Fixing {filename}\n").into_bytes()))
-
-    //Ok((0, Vec::new()))
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use bstr::ByteSlice;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
     async fn create_test_file(dir: &tempfile::TempDir, name: &str, content: &[u8]) -> PathBuf {
@@ -341,7 +325,7 @@ mod tests {
         file_path
     }
 
-    async fn run_fix_on_file(file_path: &PathBuf) -> (i32, Vec<u8>) {
+    async fn run_fix_on_file(file_path: &Path) -> (i32, Vec<u8>) {
         let filename = file_path.to_string_lossy().to_string();
         fix_file(&filename).await.unwrap()
     }
