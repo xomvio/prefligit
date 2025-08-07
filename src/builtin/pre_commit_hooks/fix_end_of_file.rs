@@ -1,5 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
 
 use crate::hook::Hook;
 use crate::run::CONCURRENCY;
@@ -7,9 +8,7 @@ use crate::run::CONCURRENCY;
 pub(crate) async fn fix_end_of_file(_hook: &Hook, filenames: &[&String]) -> Result<(i32, Vec<u8>)> {
     let mut tasks = futures::stream::iter(filenames)
         .map(async |filename| {
-            // TODO: avoid reading the whole file into memory
-            let content = fs_err::tokio::read(filename).await?;
-            fix_file(filename, &content).await
+            fix_file(filename).await
         })
         .buffered(*CONCURRENCY);
 
@@ -25,95 +24,308 @@ pub(crate) async fn fix_end_of_file(_hook: &Hook, filenames: &[&String]) -> Resu
     Ok((code, output))
 }
 
-async fn fix_file(filename: &str, content: &[u8]) -> Result<(i32, Vec<u8>)> {
-    // If the file is empty, do nothing.
-    if content.is_empty() {
-        return Ok((0, Vec::new()));
-    }
-
-    // Find the last character that is not a newline
-    let last_non_newline_pos = content.iter().rposition(|&c| c != b'\n' && c != b'\r');
-
-    if let Some(pos) = last_non_newline_pos {
-        // File has content other than newlines
-        if pos == content.len() - 1 {
-            // Last character is not a newline, add one
-            let line_ending = detect_line_ending(&content[..=pos]);
-            let new_content = [&content[..=pos], line_ending].concat();
-            fs_err::tokio::write(filename, &new_content).await?;
-            return Ok((1, format!("Fixing {filename}\n").into_bytes()));
-        }
-        // Last character is a newline, check for excess newlines
-        let after_content = &content[pos + 1..];
-        let trimmed_after = trim_excess_newlines(after_content);
-        if trimmed_after != after_content {
-            let new_content = [&content[..=pos], trimmed_after].concat();
-            fs_err::tokio::write(filename, &new_content).await?;
-            return Ok((1, format!("Fixing {filename}\n").into_bytes()));
-        }
-    } else {
-        // File consists only of newlines - make it empty
-        fs_err::tokio::write(filename, b"").await?;
-        return Ok((1, format!("Fixing {filename}\n").into_bytes()));
-    }
-
+enum LineEnding {
+    Crlf,
+    Lf,
+    Cr,
+}
+async fn empty_file (filename: &str) -> Result<(i32, Vec<u8>)> {
+    // Make the file empty
+    fs_err::tokio::remove_file(filename).await?;
+    fs_err::tokio::File::create(filename).await?;
     Ok((0, Vec::new()))
 }
 
-/// Trim excess newlines at the end, keeping only one.
-fn trim_excess_newlines(content: &[u8]) -> &[u8] {
-    if content.is_empty() {
-        return content;
+async fn rev_pos(mut reader: BufReader<fs_err::tokio::File>, pos: u64) -> Result<u64> {
+    let mut pos = reader.seek(std::io::SeekFrom::Start(pos)).await?;
+    if pos == 0 {
+        return Ok(0); // File is empty
     }
+    pos -= 1; // Move to the last byte
+    // Move the reader to the position of the last byte
+    reader.seek(std::io::SeekFrom::Start(pos)).await?;
+    Ok(pos)
+}
 
-    // Since content only contains newlines, just keep the first one
-    if content.starts_with(b"\r\n") {
-        b"\r\n"
-    } else if content.starts_with(b"\n") {
-        b"\n"
-    } else if content.starts_with(b"\r") {
-        b"\r"
-    } else {
-        // No newlines found (shouldn't happen given the context)
-        &content[..0]
+struct ReverseReader {
+    reader: BufReader<fs_err::tokio::File>,
+    pos: u64,
+}
+impl ReverseReader {
+    async fn new(filename: &str) -> Result<Self> {
+        let file = fs_err::tokio::File::open(filename).await?;
+        let reader = BufReader::new(file);
+        let file_len = reader.get_ref().metadata().await?.len();
+        if file_len == 0 {
+            return Ok(Self {
+                reader,
+                pos: 0, // File is empty
+            });
+        }
+
+        let pos = file_len - 1; // Start from the last byte
+        Ok(Self {
+            reader,
+            pos,
+        })
+    }
+    async fn read_backwards(&mut self) -> Result<u8> {
+        self.reader.seek(std::io::SeekFrom::Start(self.pos)).await?;
+        let mut buf = [0u8; 1];
+        self.reader.read_exact(&mut buf).await?;
+        if self.pos == 0 {
+            return Ok(0); // End(Beginning) of file reached
+        }
+        self.pos -= 1; // Move to the previous byte
+        Ok(buf[0])
     }
 }
 
-/// Detect the line ending type used in the file content.
-/// Returns the most common line ending, or Unix (\n) as default.
-fn detect_line_ending(content: &[u8]) -> &'static [u8] {
-    let mut crlf_count = 0;
-    let mut lf_count = 0;
-    let mut cr_count = 0;
 
-    let mut i = 0;
-    while i < content.len() {
-        if i + 1 < content.len() && content[i] == b'\r' && content[i + 1] == b'\n' {
-            crlf_count += 1;
-            i += 2;
-        } else if content[i] == b'\n' {
-            lf_count += 1;
-            i += 1;
-        } else if content[i] == b'\r' {
-            cr_count += 1;
-            i += 1;
-        } else {
-            i += 1;
+async fn fix_file(filename: &str) -> Result<(i32, Vec<u8>)> {
+
+    let src_file = fs_err::tokio::File::open(filename).await?;
+    let file_len = src_file.metadata().await?.len();
+
+    // If the file is empty, do nothing.
+    if file_len == 0 {
+        return Ok((0, Vec::new()));
+    }
+    // If the file is not empty, we will read it backwards to find the last byte
+    let mut reader = ReverseReader::new(filename).await?;
+
+    // Read the last byte of the file
+    let c = reader.read_backwards().await?;
+
+    let (mut newlines, line_ending) = if c == b'\n' {
+        // Last character is LF
+        // Read the previous character to see if it was newline character
+        match reader.read_backwards().await {
+            Ok(0) => {
+                // No previous character, there is only one LF in the file
+                // We will make it empty
+                empty_file(filename).await?;
+                return Ok((1, format!("Fixing {filename}\n").into_bytes()));
+            },
+            Ok(c) => {
+                if c == b'\r' {
+                    // File ends with CRLF
+                    // We will see if we have more CRLFs at the end
+                    (1, LineEnding::Crlf)
+                } else if c == b'\n' {
+                    // Previous character is LF, so we have two LFs
+                    // We will see if we have more LFs at the end
+                    (2, LineEnding::Lf)
+                } else {
+                    // File ends with one LF
+                    // Nothing to fix
+                    return Ok((0, Vec::new()));
+                }
+            },
+            Err(e) => {
+                return Err(anyhow::anyhow!("Error reading file: {}", e));
+            }
+        }
+    } else if c == b'\r' {
+        // File ends with CR
+        // We will see if we have multiple CRs at the end
+        (1, LineEnding::Cr)
+    } else {
+        // File does not end with a newline
+        // Read the whole file until find any line ending
+        loop {
+            match reader.read_backwards().await {
+                // If file has no newline at all
+                // Default to CRLF
+                Ok(0) => break (0, LineEnding::Crlf),
+
+                // See if we have a newline character
+                Ok(c) => {
+                    if c == b'\r' {
+                        // Newline character is CR
+                        break (0, LineEnding::Cr)
+                    } else if c == b'\n' {
+                        // We found a \n, see if the previous character is \r
+                        match reader.read_backwards().await {
+                            Ok(0) => {
+                                // No previous character, so we have only one LF
+                                // This is an edge case where we have one LF in the first byte of the file
+                                break (0, LineEnding::Lf)
+                            },
+                            Ok(c) => {
+                                if c == b'\r' {
+                                    // Newline character is CRLF
+                                    break (0, LineEnding::Crlf)
+                                }
+                                // Newline character is LF
+                                break (0, LineEnding::Lf)
+                            },
+                            Err(e) => {
+                                return Err(anyhow::anyhow!("Error reading file: {}", e));
+                            }
+                            
+                        }
+                    }
+                    // else
+                    // No newline character found, continue reading backwards
+                },
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Error reading file: {}", e));
+                }
+            }
+        }
+
+    };
+
+    // Count newlines at the end of the file
+    if newlines != 0 {
+        // We have at least one newline character at the end of the file
+        // Check if we have multiple newlines at the end
+        loop {
+            match reader.read_backwards().await {
+                Ok(0) => {
+                    // End of file reached
+                    // Whole file is newlines
+                    empty_file(filename).await?;
+                    return Ok((1, format!("Fixing {filename}\n").into_bytes()));
+                },
+                Ok(c) => {
+                    match line_ending {
+                        LineEnding::Lf => {
+                            if c == b'\n' {
+                                newlines += 1; // Count LF
+                            } else {
+                                // If we read something else, we stop
+                                break;
+                            }
+                        },
+                        LineEnding::Crlf => {
+                            if c == b'\n' {
+                                // If we read LF, check if the previous character was CR
+                                match reader.read_backwards().await {
+                                    Ok(0) => {
+                                        // This is a very edge case.
+                                        // No previous character, this means we have an LF without CR at the beginning of file
+                                        // However, since we reached the beginning of the file, this still means all the file is newlines
+                                        // We will make it empty
+                                        empty_file(filename).await?;
+                                        return Ok((1, format!("Fixing {filename}\n").into_bytes()));
+                                    },
+                                    Ok(c) => {
+                                        if c == b'\r' {
+                                            newlines += 1; // Count CRLF
+                                        } else {
+                                            // We have an LF without CR, this is unexpected in a CRLF(?) file.
+                                            // However, last newline was CRLF, so we stop counting
+                                            break;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        return Err(anyhow::anyhow!("Error reading file: {}", e));
+                                    }
+                                }
+                            }
+                            /*else if c == b'\r' {
+                                // Already counted CRLF, so we don't count it again
+                            }*/ else {
+                                // If we read something else, we stop
+                                break;
+                            }
+                        },
+                        LineEnding::Cr => {
+                            if c == b'\r' {
+                                newlines += 1; // Count CR
+                            } else {
+                                // If we read something else, we stop
+                                break;
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Error reading file: {}", e));
+                }
+            }
+        }
+    }
+    // At this point, we have the number of newlines at the end of the file
+    // It's time to fix the newlines at the end of the file
+    // If we have more than one newline, we will keep only one
+
+    // Calculate the new content length    
+    let new_file_len = match newlines.cmp(&1) {
+        std::cmp::Ordering::Equal => {
+            // We have only one newline at the end, nothing to fix
+            return Ok((0, Vec::new()));
+        },
+        std::cmp::Ordering::Greater => {
+            // We have more than one newline, should be only one
+            match line_ending {
+                LineEnding::Crlf => file_len - (newlines - 1) * 2, // CRLF is 2 bytes. So we remove 2 bytes for each
+                LineEnding::Cr | LineEnding::Lf => file_len - (newlines - 1),
+            }
+        },
+        std::cmp::Ordering::Less => {
+            // We have no newlines at the end, we will add one
+            match line_ending {
+                LineEnding::Crlf => file_len + 2, // Add CRLF byte length
+                LineEnding::Cr | LineEnding::Lf => file_len + 1,   // Add CR or LF byte length
+            }
+        }
+    };
+
+    // re-define the file reader to start from the beginning
+    let mut reader = BufReader::new(fs_err::tokio::File::open(filename).await?);
+    
+    // Define Buffered Writer to write to a temporary file
+    let mut writer = BufWriter::new(fs_err::tokio::File::create(format!("{filename}.tmp")).await?);
+
+    let mut buf = [0u8; 1]; // Buffer to read one byte at a time
+
+    if new_file_len < file_len {
+        // We will truncate the file
+        for _ in 0..new_file_len {
+            // Read and write one byte at a time, discard the last bytes
+            reader.read_exact(&mut buf).await?;
+            writer.write_all(&buf).await?;
+        }
+    }
+    else if new_file_len == file_len {
+        // The file is already the correct length, no need to fix
+        return Ok((0, Vec::new()));
+    } else {
+        // We will extend the file
+        for _ in 0..file_len {
+            // Read and write one byte at a time, keep the original content
+            reader.read_exact(&mut buf).await?;
+            writer.write_all(&buf).await?;
+        }
+        // Now we need to add the newline at the end
+        match line_ending {
+            LineEnding::Crlf => {
+                writer.write_all(b"\r\n").await?;
+            },
+            LineEnding::Lf => {
+                writer.write_all(b"\n").await?;
+            },            
+            LineEnding::Cr => {
+                writer.write_all(b"\r").await?;
+            }
         }
     }
 
-    // Return the most common line ending, with preference for CRLF > LF > CR
-    if crlf_count > 0 {
-        b"\r\n"
-    } else if lf_count > 0 {
-        b"\n"
-    } else if cr_count > 0 {
-        b"\r"
-    } else {
-        // Default to Unix line endings
-        b"\n"
-    }
+    writer.flush().await?;
+    writer.shutdown().await?;
+    reader.shutdown().await?;
+
+    // Rename the temporary file to the original file
+    fs_err::tokio::rename(format!("{filename}.tmp"), filename).await?;
+
+    Ok((1, format!("Fixing {filename}\n").into_bytes()))
+
+    //Ok((0, Vec::new()))
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -131,8 +343,7 @@ mod tests {
 
     async fn run_fix_on_file(file_path: &PathBuf) -> (i32, Vec<u8>) {
         let filename = file_path.to_string_lossy().to_string();
-        let content = fs_err::tokio::read(file_path).await.unwrap();
-        fix_file(&filename, &content).await.unwrap()
+        fix_file(&filename).await.unwrap()
     }
 
     #[tokio::test]
@@ -249,17 +460,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detect_line_ending_function() {
-        assert_eq!(detect_line_ending(b"line1\r\nline2\r\n"), b"\r\n");
-        assert_eq!(detect_line_ending(b"line1\nline2\n"), b"\n");
-        assert_eq!(detect_line_ending(b"line1\rline2\r"), b"\r");
-        assert_eq!(detect_line_ending(b"line1\r\nline2\nline3\r\n"), b"\r\n");
-        assert_eq!(detect_line_ending(b"no line endings"), b"\n");
-        // Test empty content (default to LF)
-        assert_eq!(detect_line_ending(b""), b"\n");
-    }
-
-    #[tokio::test]
     async fn test_excess_newlines_removal() {
         let dir = tempdir().unwrap();
 
@@ -289,6 +489,22 @@ mod tests {
 
         let new_content = fs_err::tokio::read(&file_path).await.unwrap();
         assert_eq!(new_content, b"line1\r\nline2\r\n");
+    }
+
+    #[tokio::test]
+    async fn test_excess_cr_removal() {
+        let dir = tempdir().unwrap();
+
+        let content = b"line1\rline2\r\r\r";
+        let file_path = create_test_file(&dir, "excess_cr.txt", content).await;
+
+        let (code, output) = run_fix_on_file(&file_path).await;
+
+        assert_eq!(code, 1, "Should fix the file");
+        assert!(output.as_bytes().contains_str("Fixing"));
+
+        let new_content = fs_err::tokio::read(&file_path).await.unwrap();
+        assert_eq!(new_content, b"line1\rline2\r");
     }
 
     #[tokio::test]
