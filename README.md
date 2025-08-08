@@ -1,4 +1,4 @@
-# prefligit
+# prefli**git**
 
 ![Development Status](https://img.shields.io/badge/Development-Early_Stage-yellowgreen)
 [![CI](https://github.com/j178/prefligit/actions/workflows/ci.yml/badge.svg)](https://github.com/j178/prefligit/actions/workflows/ci.yml)
@@ -6,9 +6,12 @@
 
 <img width="250" alt="prefligit" src="https://github.com/user-attachments/assets/49080cb0-f528-4aa5-acb7-5a88eb9eff4a">
 
-[pre-commit](https://pre-commit.com/) is a framework to run hooks written in many languages, and it manages the language toolchain and dependencies for running the hooks.
+[pre-commit](https://pre-commit.com/) is a framework to run hooks written in many languages, and it manages the
+language toolchain and dependencies for running the hooks.
 
-prefligit is a reimagined version of pre-commit, built in Rust. It is designed to be a faster, dependency-free and drop-in alternative for it, while also providing some additional long-requested features.
+prefli**git** is a reimagined version of pre-commit, built in Rust.
+It is designed to be a faster, dependency-free and drop-in alternative for it,
+while also providing some additional long-requested features.
 
 > [!WARNING]
 > This project is still in early stage of development, some features are still not implemented.
