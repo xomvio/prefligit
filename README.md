@@ -1,10 +1,11 @@
-# prefli**git**
+<img width="183" height="62" alt="image" src="https://github.com/user-attachments/assets/67002ee5-41ca-4e42-a1bd-833a47872fc6" />
+
 
 ![Development Status](https://img.shields.io/badge/Development-Early_Stage-yellowgreen)
 [![CI](https://github.com/j178/prefligit/actions/workflows/ci.yml/badge.svg)](https://github.com/j178/prefligit/actions/workflows/ci.yml)
 [![GitHub downloads](https://img.shields.io/github/downloads/j178/prefligit/total)](https://github.com/j178/prefligit/releases)
 
-<img width="250" alt="prefligit" src="https://github.com/user-attachments/assets/49080cb0-f528-4aa5-acb7-5a88eb9eff4a">
+<img width="250" alt="prefligit" src="https://github.com/user-attachments/assets/49080cb0-f528-4aa5-acb7-5a88eb9eff4a" />
 
 [pre-commit](https://pre-commit.com/) is a framework to run hooks written in many languages, and it manages the
 language toolchain and dependencies for running the hooks.
