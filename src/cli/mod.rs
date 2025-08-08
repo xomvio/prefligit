@@ -2,13 +2,15 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::builder::Styles;
 use clap::builder::styling::{AnsiColor, Effects};
+use clap::builder::{StyledStr, Styles};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueHint};
+use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 
 use constants::env_vars::EnvVars;
 
-use crate::config::{CONFIG_FILE, HookType, Stage};
+use crate::config::{self, CONFIG_FILE, HookType, Stage};
+use crate::workspace::Project;
 
 mod clean;
 mod hook_impl;
@@ -26,6 +28,55 @@ pub(crate) use run::run;
 pub(crate) use sample_config::sample_config;
 pub(crate) use self_update::self_update;
 pub(crate) use validate::{validate_configs, validate_manifest};
+
+// Parses hook ids from .pre-commit-config.yaml
+fn hook_id_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    get_hook_id_candidates(current).unwrap_or_default()
+}
+
+fn get_hook_id_candidates(current: &std::ffi::OsStr) -> anyhow::Result<Vec<CompletionCandidate>> {
+    let output = std::process::Command::new("git")
+        .arg("rev-parse")
+        .arg("--show-toplevel")
+        .output()?;
+
+    let root = String::from_utf8(output.stdout)?.trim().to_string();
+    std::env::set_current_dir(&root).ok();
+
+    let project = Project::from_config_file(None)?;
+
+    let hook_ids = project
+        .config()
+        .repos
+        .iter()
+        .flat_map(
+            |repo| -> Box<dyn Iterator<Item = (&String, Option<&str>)>> {
+                match repo {
+                    config::Repo::Remote(cfg) => {
+                        Box::new(cfg.hooks.iter().map(|h| (&h.id, h.name.as_deref())))
+                    }
+                    config::Repo::Local(cfg) => {
+                        Box::new(cfg.hooks.iter().map(|h| (&h.id, Some(&*h.name))))
+                    }
+                    config::Repo::Meta(cfg) => {
+                        Box::new(cfg.hooks.iter().map(|h| (&h.0.id, Some(&*h.0.name))))
+                    }
+                }
+            },
+        )
+        .map(|(id, name)| {
+            CompletionCandidate::new(id.clone())
+                .help(name.map(|name| StyledStr::from(name.to_string())))
+        });
+
+    let Some(current) = current.to_str() else {
+        return Ok(hook_ids.collect());
+    };
+
+    Ok(hook_ids
+        .filter(|h| h.get_value().to_str().unwrap_or_default().contains(current))
+        .collect())
+}
 
 #[derive(Copy, Clone)]
 pub(crate) enum ExitStatus {
@@ -257,7 +308,7 @@ pub(crate) struct RunExtraArgs {
 #[derive(Debug, Clone, Default, Args)]
 pub(crate) struct RunArgs {
     /// The hook ID to run.
-    #[arg(value_name = "HOOK", value_hint = ValueHint::Other)]
+    #[arg(value_name = "HOOK", value_hint = ValueHint::Other, add = ArgValueCompleter::new(hook_id_completer))]
     pub(crate) hook_id: Option<String>,
     /// Run on all files in the repo.
     #[arg(short, long, conflicts_with_all = ["files", "from_ref", "to_ref"])]
