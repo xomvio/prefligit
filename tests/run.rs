@@ -1088,7 +1088,13 @@ fn init_nonexistent_repo() {
     let filters = context
         .filters()
         .into_iter()
-        .chain([(r"exit code: ", "exit status: ")])
+        .chain([(r"exit code: ", "exit status: "),
+            // Normalize Git error message to handle environment-specific variations
+            (
+                r"fatal: unable to access 'https://notexistentatallnevergonnahappen\.com/nonexistent/repo/':.*",
+                r"fatal: unable to access 'https://notexistentatallnevergonnahappen.com/nonexistent/repo/': [error]"
+            ),
+        ])
         .collect::<Vec<_>>();
 
     cmd_snapshot!(filters, context.run(), @r"
@@ -1104,7 +1110,7 @@ fn init_nonexistent_repo() {
     exit status: 128
 
     [stderr]
-    fatal: unable to access 'https://notexistentatallnevergonnahappen.com/nonexistent/repo/': Could not resolve host: notexistentatallnevergonnahappen.com
+    fatal: unable to access 'https://notexistentatallnevergonnahappen.com/nonexistent/repo/': [error]
     ");
 }
 
